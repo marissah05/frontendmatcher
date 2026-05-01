@@ -1,0 +1,124 @@
+You are improving the UI of an existing React app (DO NOT change backend or business logic).
+
+--------------------------------------------------
+GOAL
+--------------------------------------------------
+
+Refactor the header and round navigation to:
+1) Remove overlapping UI
+2) Replace tabs with a dropdown
+3) Allow editing round names inline
+4) Allow deleting rounds safely
+
+--------------------------------------------------
+CONSTRAINTS
+--------------------------------------------------
+
+- DO NOT change data structures
+- DO NOT change backend
+- DO NOT break existing functionality
+- Only modify frontend UI (dashboard.tsx and related components)
+- Keep styling consistent with current Tailwind system
+
+--------------------------------------------------
+TASKS
+--------------------------------------------------
+
+### 1. FIX HEADER LAYOUT
+
+Problem:
+- Round tabs overlap with Save button
+
+Solution:
+- Convert header into a flex row with proper spacing
+- Use: flex, justify-between, gap, flex-wrap if needed
+- Left side: round controls
+- Right side: Save button + Undo button
+
+--------------------------------------------------
+
+### 2. REPLACE ROUND TABS WITH DROPDOWN
+
+Remove:
+- Tabs / TabsList / TabsTrigger
+
+Replace with:
+
+Dropdown UI:
+
+Label:
+"Round"
+
+Component:
+<select> OR styled dropdown
+
+Behavior:
+- Shows current round name
+- On change → setActiveRoundId(value)
+
+Options:
+rounds.map(r => (
+  <option value={r.id}>{r.name}</option>
+))
+
+--------------------------------------------------
+
+### 3. ADD "ADD ROUND" BUTTON NEXT TO DROPDOWN
+
+Button:
+"+ Add Round"
+
+Calls:
+handleAddRound()
+
+--------------------------------------------------
+
+### 4. INLINE EDIT ROUND NAME
+
+Next to dropdown, show editable input:
+
+<input
+  value={activeRound.name}
+  onChange={(e) => handleRoundNameChange(e.target.value)}
+  onBlur={handleRoundNameBlur}
+/>
+
+Style it consistent with current UI.
+
+--------------------------------------------------
+
+### 5. ADD DELETE ROUND BUTTON
+
+Add a small button (trash icon or text "Delete Round")
+
+Behavior:
+
+- On click:
+    confirm("Delete this round? This cannot be undone.")
+
+- If confirmed:
+    remove the round from state
+
+- If deleted round is active:
+    switch to another existing round
+
+--------------------------------------------------
+
+### 6. KEEP EVERYTHING ELSE WORKING
+
+IMPORTANT:
+- Do not break drag/drop
+- Do not break autosave
+- Do not break chain logic
+- Do not change state shape
+
+--------------------------------------------------
+
+### OUTPUT
+--------------------------------------------------
+
+1) Show updated header JSX
+2) Show new dropdown code
+3) Show delete round logic
+4) Brief explanation of changes
+5) STOP and wait for approval

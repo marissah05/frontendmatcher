@@ -24,7 +24,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -251,6 +250,18 @@ export default function Dashboard() {
     };
     setRounds(prev => [...prev, nextRound]);
     setActiveRoundId(nextRound.id);
+  };
+
+  const handleDeleteRound = () => {
+    if (rounds.length <= 1) {
+      toast.error("Cannot delete the last round");
+      return;
+    }
+    if (!confirm("Delete this round? This cannot be undone.")) return;
+    pushUndoState();
+    const remaining = rounds.filter(r => r.id !== activeRoundId);
+    setRounds(remaining);
+    setActiveRoundId(remaining[0].id);
   };
 
   const handleRoundNameChange = (name: string) => {
@@ -1163,20 +1174,55 @@ export default function Dashboard() {
   return (
     <div className="h-screen bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96)_38%,_rgba(241,245,249,1))] flex flex-col font-sans overflow-hidden text-[12px] text-slate-800">
       <header className="border-b border-slate-200/80 bg-white/90 px-4 py-2.5 flex items-center justify-between gap-4 shrink-0 backdrop-blur-xl shadow-[0_14px_28px_-24px_rgba(15,23,42,0.45)]">
-        <div className="flex items-center gap-4 min-w-0">
+        {/* LEFT: app name + round controls */}
+        <div className="flex items-center gap-3 min-w-0 flex-wrap">
           <h1 className="font-serif text-[18px] tracking-[-0.03em] text-slate-900 shrink-0">Bump Planner Pro</h1>
-          <Tabs value={activeRoundId} onValueChange={setActiveRoundId} className="w-auto min-w-0">
-            <TabsList className="h-9 border border-slate-200/80 bg-white/90 p-1 rounded-none shadow-[0_10px_22px_-18px_rgba(15,23,42,0.35)]">
-              {rounds.map(r => (
-                <TabsTrigger key={r.id} value={r.id} className="text-[11px] px-3.5 h-7 rounded-none border border-transparent text-slate-600 transition-all data-[state=active]:border-violet-300 data-[state=active]:bg-[linear-gradient(180deg,rgba(124,58,237,0.96),rgba(91,33,182,0.96))] data-[state=active]:text-white data-[state=active]:shadow-[0_10px_20px_-16px_rgba(91,33,182,0.75)]" data-testid={`tab-round-${r.id}`}>
-                  {r.name}
-                </TabsTrigger>
-              ))}
-              <Button variant="ghost" className="h-7 w-7 p-0 ml-0.5 rounded-none border border-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-900" onClick={handleAddRound} data-testid="button-add-round">+</Button>
-            </TabsList>
-          </Tabs>
+
+          {/* Round selector dropdown */}
+          <select
+            value={activeRoundId}
+            onChange={e => setActiveRoundId(e.target.value)}
+            className="h-8 border border-slate-200 bg-white text-[11px] px-2 text-slate-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-violet-400 cursor-pointer"
+            data-testid="select-round"
+          >
+            {rounds.map(r => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </select>
+
+          {/* Inline round name editor */}
+          <Input
+            value={activeRound.name}
+            onChange={e => handleRoundNameChange(e.target.value)}
+            onBlur={handleRoundNameBlur}
+            className="h-8 w-36 rounded-none border-slate-200 bg-slate-50/90 text-[12px] shadow-none"
+            data-testid="input-round-name"
+          />
+
+          {/* Add Round */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleAddRound}
+            className="h-8 px-3 rounded-none text-[11px] border-slate-200 text-slate-600 hover:bg-slate-100"
+            data-testid="button-add-round"
+          >
+            + Add Round
+          </Button>
+
+          {/* Delete Round */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleDeleteRound}
+            className="h-8 w-8 p-0 rounded-none text-slate-400 hover:text-red-500 hover:bg-red-50"
+            data-testid="button-delete-round"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
         </div>
 
+        {/* RIGHT: Save + Undo */}
         <div className="flex items-center gap-2 shrink-0">
           <Button
             variant="outline"
@@ -1200,16 +1246,6 @@ export default function Dashboard() {
             <RotateCcw className="mr-1.5 h-3 w-3" />
             Undo · Ctrl/⌘Z
           </Button>
-          <div className="flex items-center gap-2 border border-slate-200/80 bg-white/80 px-2.5 py-1 rounded-none shadow-[0_10px_24px_-20px_rgba(15,23,42,0.35)]">
-            <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Round Name</span>
-            <Input
-              value={activeRound.name}
-              onChange={(e) => handleRoundNameChange(e.target.value)}
-              onBlur={handleRoundNameBlur}
-              className="h-8 w-44 rounded-none border-slate-200 bg-slate-50/90 text-[12px] shadow-none"
-              data-testid="input-round-name"
-            />
-          </div>
         </div>
       </header>
 

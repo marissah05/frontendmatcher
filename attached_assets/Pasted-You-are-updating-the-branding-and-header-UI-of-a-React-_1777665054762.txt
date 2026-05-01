@@ -1,0 +1,113 @@
+You are updating the branding and header UI of a React app.
+
+--------------------------------------------------
+GOAL
+--------------------------------------------------
+
+Rename the app to "MatchOps" and improve the header so it feels like a clean, professional product.
+
+--------------------------------------------------
+CONSTRAINTS
+--------------------------------------------------
+
+- DO NOT change any logic
+- DO NOT change layout structure
+- DO NOT break existing features
+- Only update branding and header UI
+- Keep Tailwind styling consistent
+
+--------------------------------------------------
+TASKS
+--------------------------------------------------
+
+### 1. REPLACE APP NAME
+
+Replace all instances of:
+"Bump Planner Pro"
+
+with:
+"MatchOps"
+
+Also update:
+document.title = "MatchOps"
+
+--------------------------------------------------
+
+### 2. HEADER TITLE BLOCK
+
+Create a clean title block:
+
+<div className="flex flex-col leading-tight">
+  <span className="text-lg font-semibold text-slate-900 tracking-tight">
+    MatchOps
+  </span>
+  <span className="text-xs text-slate-500">
+    Recruitment Matching System
+  </span>
+</div>
+
+--------------------------------------------------
+
+### 3. ADD SUBTLE "OPS" STYLE
+
+Make the name feel slightly more branded:
+
+Option:
+- Slight letter spacing tightening (tracking-tight)
+- Keep color dark (no bright colors)
+
+DO NOT:
+- Add gradients
+- Add heavy branding
+- Overdesign
+
+--------------------------------------------------
+
+### 4. HEADER LAYOUT POLISH
+
+Ensure header container:
+
+className="flex items-center justify-between px-4 py-2 border-b bg-white gap-4"
+
+Left side:
+- Title block
+- Round controls
+
+Right side:
+- Save button
+- Undo button
+
+--------------------------------------------------
+
+### 5. ADD SUBTLE DIVIDER
+
+Between title and controls:
+
+<div className="h-6 w-px bg-slate-200 mx-2" />
+
+--------------------------------------------------
+
+### 6. OPTIONAL: HIGHLIGHT PRIMARY ACTION
+
+Make Save button slightly more prominent:
+
+- Keep existing style
+- Ensure it stands out slightly from other buttons
+
+--------------------------------------------------
+
+### 7. KEEP EVERYTHING ELSE
+
+- Do not modify panels
+- Do not modify logic
+- Do not modify data flow
+
+--------------------------------------------------
+
+### OUTPUT
+--------------------------------------------------
+
+1) Show updated header JSX
+2) Show where name/title was updated
+3) Brief explanation of visual improvements
+4) STOP and wait for approval

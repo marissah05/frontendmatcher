@@ -1194,7 +1194,12 @@ export default function Dashboard() {
       <header className="border-b border-slate-200/80 bg-white/90 px-4 py-2.5 flex items-center justify-between gap-4 shrink-0 backdrop-blur-xl shadow-[0_14px_28px_-24px_rgba(15,23,42,0.45)]">
         {/* LEFT: app name + round controls */}
         <div className="flex items-center gap-3 min-w-0 flex-wrap">
-          <h1 className="font-serif text-[18px] tracking-[-0.03em] text-slate-900 shrink-0">Bump Planner Pro</h1>
+          <div className="flex flex-col leading-tight shrink-0">
+            <span className="text-[17px] font-semibold text-slate-900 tracking-tight">MatchOps</span>
+            <span className="text-[10px] text-slate-400 tracking-wide">Recruitment Matching System</span>
+          </div>
+
+          <div className="h-6 w-px bg-slate-200 mx-1 shrink-0" />
 
           {/* Round selector dropdown */}
           <select

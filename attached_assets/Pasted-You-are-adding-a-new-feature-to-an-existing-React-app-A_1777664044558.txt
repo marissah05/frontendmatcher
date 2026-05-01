@@ -1,0 +1,106 @@
+You are adding a new feature to an existing React app:
+A "Master Active Summary" that counts how many times each active is assigned across ALL rounds.
+
+--------------------------------------------------
+GOAL
+--------------------------------------------------
+
+1) Compute how many times each active appears in matches
+2) Display it in the UI
+3) Include it in CSV export
+
+--------------------------------------------------
+CONSTRAINTS
+--------------------------------------------------
+
+- DO NOT modify backend
+- DO NOT modify database
+- Compute everything in frontend only
+- Do NOT break existing features
+- Keep code clean and minimal
+
+--------------------------------------------------
+TASKS
+--------------------------------------------------
+
+### 1. CREATE ACTIVE SUMMARY LOGIC
+
+Inside dashboard.tsx:
+
+Create a useMemo:
+
+const activeSummary = useMemo(() => {
+  const counts: Record<string, number> = {};
+
+  actives.forEach(a => {
+    counts[a.id] = 0;
+  });
+
+  rounds.forEach(round => {
+    round.pnms.forEach(pnm => {
+      if (pnm.matchedWith) counts[pnm.matchedWith]++;
+      if (pnm.secondMatch) counts[pnm.secondMatch]++;
+    });
+  });
+
+  return actives.map(a => ({
+    id: a.id,
+    name: a.name,
+    count: counts[a.id] || 0
+  }));
+}, [rounds, actives]);
+
+--------------------------------------------------
+
+### 2. ADD UI PANEL (LIGHTWEIGHT)
+
+Add a small section in the right panel (below Active Pool or toggleable):
+
+Title:
+"Active Summary"
+
+Display:
+- Name
+- Count
+
+Simple vertical list or table
+
+--------------------------------------------------
+
+### 3. ADD TO CSV EXPORT
+
+Find exportToCSV()
+
+At the bottom, append:
+
+[""],
+["--- ACTIVE SUMMARY ---"],
+["Name", "Total Conversations"],
+...activeSummary.map(a => [a.name, String(a.count)])
+
+--------------------------------------------------
+
+### 4. OPTIONAL SORT
+
+Sort activeSummary descending by count:
+
+.sort((a, b) => b.count - a.count)
+
+--------------------------------------------------
+
+### 5. KEEP UI CLEAN
+
+- Small font
+- Scrollable if long
+- Consistent with existing styles
+
+--------------------------------------------------
+
+### OUTPUT
+--------------------------------------------------
+
+1) Show activeSummary useMemo
+2) Show UI section
+3) Show updated export section
+4) Brief explanation
+5) STOP and wait for approval

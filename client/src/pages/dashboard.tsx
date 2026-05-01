@@ -1001,7 +1001,11 @@ export default function Dashboard() {
       [""],
       ["--- UNUSED ACTIVES ---"],
       ["Unused Bump 1", "Unused Bump 2", "Completely Unused"],
-      ...unusedRows
+      ...unusedRows,
+      [""],
+      ["--- ACTIVE SUMMARY (ALL ROUNDS) ---"],
+      ["Name", "Total Conversations"],
+      ...activeSummary.map(a => [escapeCSV(a.name), String(a.count)])
     ].map(e => e.join(",")).join("\n");
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1157,6 +1161,20 @@ export default function Dashboard() {
       setIsSaving(false);
     }
   };
+
+  const activeSummary = useMemo(() => {
+    const counts: Record<string, number> = {};
+    actives.forEach(a => { counts[a.id] = 0; });
+    rounds.forEach(round => {
+      round.pnms.forEach(pnm => {
+        if (pnm.matchedWith && counts[pnm.matchedWith] !== undefined) counts[pnm.matchedWith]++;
+        if (pnm.secondMatch && counts[pnm.secondMatch] !== undefined) counts[pnm.secondMatch]++;
+      });
+    });
+    return actives
+      .map(a => ({ id: a.id, name: a.name, count: counts[a.id] || 0 }))
+      .sort((a, b) => b.count - a.count);
+  }, [rounds, actives]);
 
   const filteredPnms = activeRound.pnms.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.idNumber.includes(searchTerm));
 
@@ -1696,6 +1714,21 @@ export default function Dashboard() {
                     </div>
                   </ScrollArea>
                 </div>
+              </div>
+
+              {/* Active Summary — all rounds */}
+              <div className="mt-2 shrink-0 border-t border-slate-100 pt-2">
+                <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-1.5 px-0.5" data-testid="text-active-summary-title">Active Summary · All Rounds</p>
+                <ScrollArea className="max-h-32">
+                  <div className="space-y-0.5">
+                    {activeSummary.map(a => (
+                      <div key={a.id} className="flex items-center justify-between px-1 py-0.5 rounded-sm hover:bg-slate-50" data-testid={`row-active-summary-${a.id}`}>
+                        <span className="text-[10px] text-slate-600 truncate">{a.name}</span>
+                        <span className={`text-[10px] font-semibold shrink-0 ml-2 ${a.count === 0 ? 'text-slate-300' : 'text-violet-600'}`} data-testid={`text-active-count-${a.id}`}>{a.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
               </div>
             </div>
           </ResizablePanel>

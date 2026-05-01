@@ -1489,7 +1489,7 @@ export default function Dashboard() {
           </aside>
 
           <ResizablePanelGroup direction="horizontal" className="flex-1 overflow-hidden">
-          <ResizablePanel defaultSize={75} minSize={30}>
+          <ResizablePanel defaultSize={70} minSize={40}>
             <div className="h-full flex flex-col bg-white/92 border border-slate-200/80 shadow-[0_20px_40px_-30px_rgba(15,23,42,0.28)] overflow-hidden">
               <div className="px-3 py-2.5 border-b border-slate-200/80 flex items-center justify-between gap-3 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,250,252,0.86))]">
                 <div className="flex items-center gap-2.5 flex-1 flex-wrap">
@@ -1612,10 +1612,10 @@ export default function Dashboard() {
             </div>
           </ResizablePanel>
 
-          <ResizableHandle withHandle className="bg-transparent" />
+          <ResizableHandle withHandle className="w-2 bg-slate-100 hover:bg-slate-200 transition-colors" />
 
-          <ResizablePanel defaultSize={25} minSize={15}>
-            <div className="h-full bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.92))] border border-slate-200/80 shadow-[0_20px_40px_-30px_rgba(15,23,42,0.28)] p-2.5 flex flex-col overflow-hidden">
+          <ResizablePanel defaultSize={30} minSize={20}>
+            <div className="h-full min-w-[220px] bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.92))] border border-slate-200/80 shadow-[0_20px_40px_-30px_rgba(15,23,42,0.28)] p-2.5 flex flex-col overflow-hidden">
               <div className="flex items-center justify-between mb-3 px-0.5 shrink-0">
                 <div>
                   <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">Active Pool</h3>

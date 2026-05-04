@@ -1597,7 +1597,7 @@ export default function Dashboard() {
                         {isToolsMenuOpen ? 'View Chains' : null}
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col rounded-none">
+                    <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col rounded-none overflow-hidden">
                       <DialogHeader>
                         <DialogTitle>Current Bump Chains</DialogTitle>
                         <DialogDescription>
@@ -1627,7 +1627,7 @@ export default function Dashboard() {
                           <span data-testid="text-chains-over-limit">Over limit {chainAnalysis.overLimitCount}</span>
                         </div>
                       </div>
-                      <ScrollArea className="flex-1 -mx-4 px-4 py-2">
+                      <ScrollArea className="flex-1 min-h-0 -mx-4 px-4 py-2">
                         {chainAnalysis.chains.length > 0 ? (
                           <div className="space-y-2">
                             {chainAnalysis.chains.map((chain, idx) => {

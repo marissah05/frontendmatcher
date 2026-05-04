@@ -527,7 +527,8 @@ export default function Dashboard() {
 
     const pushChain = (activeIds: string[], isCycle: boolean) => {
       const names = activeIds.map(activeId => activeNameById.get(activeId) || activeId);
-      const readOrderNames = names;
+      // Read order: tail first (the active unused in M1 who is free to initiate bumping)
+      const readOrderNames = [...names].reverse();
       const display = isCycle ? [...readOrderNames, readOrderNames[0]].join(" -> ") : readOrderNames.join(" -> ");
       const starterName = readOrderNames[0];
       const handoffNames = isCycle

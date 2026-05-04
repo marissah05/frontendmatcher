@@ -1686,7 +1686,7 @@ export default function Dashboard() {
               <div className="flex border-b border-slate-200/80 shrink-0 bg-white/95 px-1">
                 <button onClick={() => setActiveView('planner')} className={`px-4 py-2.5 text-[11px] font-semibold border-b-2 transition-colors ${activeView === 'planner' ? 'border-violet-500 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`} data-testid="tab-planner">Planner</button>
                 <button onClick={() => setActiveView('summary')} className={`px-4 py-2.5 text-[11px] font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${activeView === 'summary' ? 'border-violet-500 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`} data-testid="tab-active-summary"><BarChart2 className="w-3 h-3" />Active Summary</button>
-                <button onClick={() => setActiveView('reviews')} className={`px-4 py-2.5 text-[11px] font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${activeView === 'reviews' ? 'border-violet-500 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`} data-testid="tab-reviews"><Star className="w-3 h-3" />Reviews</button>
+                <button onClick={() => setActiveView('reviews')} className={`px-4 py-2.5 text-[11px] font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${activeView === 'reviews' ? 'border-violet-500 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`} data-testid="tab-reviews"><Star className="w-3 h-3" />Comments</button>
               </div>
 
               {activeView === 'planner' && (<>

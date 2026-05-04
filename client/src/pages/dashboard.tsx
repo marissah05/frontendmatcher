@@ -104,6 +104,16 @@ function ReviewsTab({
     return true;
   });
 
+  // Build a map: pnmId → Set of activeIds who talked to that PNM across all rounds
+  const pnmToActiveIds = new Map<string, Set<string>>();
+  rounds.forEach(round => {
+    round.pnms.forEach(pnm => {
+      if (!pnmToActiveIds.has(pnm.id)) pnmToActiveIds.set(pnm.id, new Set());
+      if (pnm.matchedWith) pnmToActiveIds.get(pnm.id)!.add(pnm.matchedWith);
+      if (pnm.secondMatch) pnmToActiveIds.get(pnm.id)!.add(pnm.secondMatch);
+    });
+  });
+
   const saveReview = async (pnmId: string, activeId: string, activeName: string, pnmName: string, stars: number, note: string) => {
     const id = `rev_${pnmId}_${activeId}`;
     setSavingReviewId(id);
@@ -127,6 +137,8 @@ function ReviewsTab({
       {uniquePnms.length === 0 ? (
         <div className="py-16 text-center text-[11px] text-slate-400">No PNMs imported yet.</div>
       ) : uniquePnms.map(pnm => {
+        const matchedActiveIds = pnmToActiveIds.get(pnm.id) ?? new Set<string>();
+        const matchedActives = actives.filter(a => matchedActiveIds.has(a.id));
         const pnmReviewsList = reviews.filter(r => r.pnmId === pnm.id);
         const avgStars = pnmReviewsList.length > 0
           ? pnmReviewsList.reduce((s, r) => s + r.stars, 0) / pnmReviewsList.length
@@ -147,19 +159,18 @@ function ReviewsTab({
                   {[1,2,3,4,5].map(s => (
                     <Star key={s} className={`w-3 h-3 ${s <= Math.round(avgStars) ? 'text-amber-400 fill-amber-400' : 'text-slate-200'}`} />
                   ))}
-                  <span className="text-[10px] text-slate-500 ml-1">{avgStars.toFixed(1)} · {pnmReviewsList.length} review{pnmReviewsList.length !== 1 ? 's' : ''}</span>
+                  <span className="text-[10px] text-slate-500 ml-1">{avgStars.toFixed(1)} · {pnmReviewsList.length} comment{pnmReviewsList.length !== 1 ? 's' : ''}</span>
                 </span>
               ) : (
-                <span className="text-[10px] text-slate-300 shrink-0">No reviews yet</span>
+                <span className="text-[10px] text-slate-300 shrink-0">No comments yet</span>
               )}
             </button>
 
             {isExpanded && (
               <div className="bg-slate-50/60 border-t border-slate-100 px-4 pt-3 pb-4 space-y-4">
-                {actives.length === 0 && (
-                  <p className="text-[11px] text-slate-400">Import actives first to leave reviews.</p>
-                )}
-                {actives.map(active => {
+                {matchedActives.length === 0 ? (
+                  <p className="text-[11px] text-slate-400">No actives have been matched with this PNM yet.</p>
+                ) : matchedActives.map(active => {
                   const reviewId = `rev_${pnm.id}_${active.id}`;
                   const existing = reviews.find(r => r.id === reviewId);
                   const draft = reviewDraft[reviewId];
@@ -206,7 +217,7 @@ function ReviewsTab({
                           className="mt-2 px-3 py-1 text-[10px] font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                           data-testid={`btn-save-review-${pnm.id}-${active.id}`}
                         >
-                          {isSaving ? "Saving…" : "Save Review"}
+                          {isSaving ? "Saving…" : "Save Comment"}
                         </button>
                       )}
                     </div>

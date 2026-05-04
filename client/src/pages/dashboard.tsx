@@ -458,6 +458,24 @@ export default function Dashboard() {
     setActiveRoundId(remaining[0].id);
   };
 
+  const handleClearRound = () => {
+    if (!confirm(`Clear all PNMs from ${activeRound.name}? This cannot be undone.`)) return;
+    pushUndoState();
+    setRounds(prev => prev.map(r => r.id === activeRoundId ? { ...r, pnms: [] } : r));
+    toast.success(`${activeRound.name} cleared`);
+  };
+
+  const handleClearActivePool = () => {
+    if (!confirm("Remove all actives from the pool? This will also clear all bump assignments.")) return;
+    pushUndoState();
+    setActives([]);
+    setRounds(prev => prev.map(r => ({
+      ...r,
+      pnms: r.pnms.map(p => ({ ...p, matchedWith: undefined, secondMatch: undefined })),
+    })));
+    toast.success("Active pool cleared");
+  };
+
   const handleRoundNameChange = (name: string) => {
     if (!roundNameUndoCapturedRef.current) {
       pushUndoState();
@@ -1431,6 +1449,18 @@ export default function Dashboard() {
             + Add Round
           </Button>
 
+          {/* Clear Round PNMs */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleClearRound}
+            className="h-8 px-2.5 rounded-none text-slate-400 hover:text-amber-600 hover:bg-amber-50 text-[11px] font-medium"
+            data-testid="button-clear-round"
+            title={`Clear all PNMs from ${activeRound.name}`}
+          >
+            Clear Round
+          </Button>
+
           {/* Delete Round */}
           <Button
             variant="ghost"
@@ -1924,7 +1954,15 @@ export default function Dashboard() {
                   <p className="text-[10px] text-slate-400 mt-0.5">Right-click an active to edit the pool.</p>
                 </div>
                 <div className="flex gap-2 items-center">
-                   <div className="h-7 w-7 border border-slate-200 bg-white flex items-center justify-center shadow-sm"><UserCheck className="h-3 w-3 text-slate-400" /></div>
+                  <button
+                    onClick={handleClearActivePool}
+                    className="h-7 px-2 text-[10px] font-semibold text-slate-400 hover:text-red-500 hover:bg-red-50 border border-slate-200 bg-white transition-colors"
+                    data-testid="button-clear-active-pool"
+                    title="Remove all actives from the pool"
+                  >
+                    Clear Pool
+                  </button>
+                  <div className="h-7 w-7 border border-slate-200 bg-white flex items-center justify-center shadow-sm"><UserCheck className="h-3 w-3 text-slate-400" /></div>
                 </div>
               </div>
               

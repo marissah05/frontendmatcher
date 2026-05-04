@@ -527,7 +527,7 @@ export default function Dashboard() {
 
     const pushChain = (activeIds: string[], isCycle: boolean) => {
       const names = activeIds.map(activeId => activeNameById.get(activeId) || activeId);
-      const readOrderNames = [...names].reverse();
+      const readOrderNames = names;
       const display = isCycle ? [...readOrderNames, readOrderNames[0]].join(" -> ") : readOrderNames.join(" -> ");
       const starterName = readOrderNames[0];
       const handoffNames = isCycle

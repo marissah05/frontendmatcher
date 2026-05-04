@@ -85,6 +85,7 @@ function ReviewsTab({
   expandedPnmId, setExpandedPnmId,
   reviewDraft, setReviewDraft,
   savingReviewId, setSavingReviewId,
+  commentsSearch, setCommentsSearch,
 }: {
   rounds: RoundData[];
   actives: Active[];
@@ -96,13 +97,15 @@ function ReviewsTab({
   setReviewDraft: React.Dispatch<React.SetStateAction<Record<string, { stars: number; note: string }>>>;
   savingReviewId: string | null;
   setSavingReviewId: React.Dispatch<React.SetStateAction<string | null>>;
+  commentsSearch: string;
+  setCommentsSearch: React.Dispatch<React.SetStateAction<string>>;
 }) {
   const seenNames = new Set<string>();
   const uniquePnms = rounds.flatMap(r => r.pnms).filter(p => {
     if (seenNames.has(p.name)) return false;
     seenNames.add(p.name);
     return true;
-  });
+  }).filter(p => p.name.toLowerCase().includes(commentsSearch.toLowerCase()));
 
   // Build a map: pnmId → Set of activeIds who talked to that PNM across all rounds
   const pnmToActiveIds = new Map<string, Set<string>>();
@@ -132,10 +135,24 @@ function ReviewsTab({
     }
   };
 
+  const allPnmsCount = rounds.flatMap(r => r.pnms).filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i).length;
+
   return (
+    <>
+    <div className="px-3 py-2 border-b border-slate-200/80 shrink-0 flex items-center gap-2 bg-white/95">
+      <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+      <input
+        className="flex-1 text-[12px] bg-transparent outline-none placeholder:text-slate-400 text-slate-800"
+        placeholder="Search PNMs…"
+        value={commentsSearch}
+        onChange={e => setCommentsSearch(e.target.value)}
+        data-testid="input-comments-search"
+      />
+      {commentsSearch && <button onClick={() => setCommentsSearch("")} className="text-[10px] text-slate-400 hover:text-slate-600">✕</button>}
+    </div>
     <ScrollArea className="flex-1">
       {uniquePnms.length === 0 ? (
-        <div className="py-16 text-center text-[11px] text-slate-400">No PNMs imported yet.</div>
+        <div className="py-16 text-center text-[11px] text-slate-400">{allPnmsCount === 0 ? 'No PNMs imported yet.' : 'No PNMs match your search.'}</div>
       ) : uniquePnms.map(pnm => {
         const matchedActiveIds = pnmToActiveIds.get(pnm.id) ?? new Set<string>();
         const matchedActives = actives.filter(a => matchedActiveIds.has(a.id));
@@ -229,6 +246,7 @@ function ReviewsTab({
         );
       })}
     </ScrollArea>
+    </>
   );
 }
 
@@ -247,6 +265,8 @@ export default function Dashboard() {
   const [isActiveImportOpen, setIsActiveImportOpen] = useState(false);
   const [isBumpChainsOpen, setIsBumpChainsOpen] = useState(false);
   const [activeView, setActiveView] = useState<'planner' | 'summary' | 'reviews'>('planner');
+  const [summarySearch, setSummarySearch] = useState("");
+  const [commentsSearch, setCommentsSearch] = useState("");
   const [reviews, setReviews] = useState<PnmReview[]>([]);
   const [expandedPnmId, setExpandedPnmId] = useState<string | null>(null);
   const [reviewDraft, setReviewDraft] = useState<Record<string, { stars: number; note: string }>>({});
@@ -1822,6 +1842,18 @@ export default function Dashboard() {
               </>)}
               {activeView === 'summary' && (
                 /* ── Active Summary Tab ── */
+                <>
+                <div className="px-3 py-2 border-b border-slate-200/80 shrink-0 flex items-center gap-2 bg-white/95">
+                  <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                  <input
+                    className="flex-1 text-[12px] bg-transparent outline-none placeholder:text-slate-400 text-slate-800"
+                    placeholder="Search actives…"
+                    value={summarySearch}
+                    onChange={e => setSummarySearch(e.target.value)}
+                    data-testid="input-summary-search"
+                  />
+                  {summarySearch && <button onClick={() => setSummarySearch("")} className="text-[10px] text-slate-400 hover:text-slate-600">✕</button>}
+                </div>
                 <ScrollArea className="flex-1">
                   <Table className="rounded-none">
                     <TableHeader className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-md shadow-[inset_0_-1px_0_rgba(226,232,240,0.95)]">
@@ -1832,11 +1864,11 @@ export default function Dashboard() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {activeSummary.length === 0 ? (
+                      {activeSummary.filter(a => a.name.toLowerCase().includes(summarySearch.toLowerCase())).length === 0 ? (
                         <TableRow className="hover:bg-transparent">
-                          <TableCell colSpan={3} className="py-10 text-center text-[11px] text-slate-400">No actives imported yet.</TableCell>
+                          <TableCell colSpan={3} className="py-10 text-center text-[11px] text-slate-400">{activeSummary.length === 0 ? 'No actives imported yet.' : 'No actives match your search.'}</TableCell>
                         </TableRow>
-                      ) : activeSummary.map(a => (
+                      ) : activeSummary.filter(a => a.name.toLowerCase().includes(summarySearch.toLowerCase())).map(a => (
                         <TableRow key={a.id} className="align-top" data-testid={`row-summary-${a.id}`}>
                           <TableCell className="py-2.5 text-[12px] font-semibold text-slate-800 whitespace-nowrap">{a.name}</TableCell>
                           <TableCell className="py-2.5">
@@ -1861,6 +1893,7 @@ export default function Dashboard() {
                     </TableBody>
                   </Table>
                 </ScrollArea>
+                </>
               )}
               {activeView === 'reviews' && (
                 <ReviewsTab
@@ -1874,6 +1907,8 @@ export default function Dashboard() {
                   setReviewDraft={setReviewDraft}
                   savingReviewId={savingReviewId}
                   setSavingReviewId={setSavingReviewId}
+                  commentsSearch={commentsSearch}
+                  setCommentsSearch={setCommentsSearch}
                 />
               )}
             </div>

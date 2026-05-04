@@ -28,7 +28,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Search, ClipboardPaste, UserCheck, Users, Trash2, Download, Upload, GitMerge, ListOrdered, AlertTriangle, Wand2, Settings2, ChevronLeft, ChevronRight, RotateCcw, Save, BookMarked, Clock } from "lucide-react";
+import { Search, ClipboardPaste, UserCheck, Users, Trash2, Download, Upload, GitMerge, ListOrdered, AlertTriangle, Wand2, Settings2, ChevronLeft, ChevronRight, RotateCcw, Save, BookMarked, Clock, BarChart2 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -82,6 +82,7 @@ export default function Dashboard() {
   const [isPnmImportOpen, setIsPnmImportOpen] = useState(false);
   const [isActiveImportOpen, setIsActiveImportOpen] = useState(false);
   const [isBumpChainsOpen, setIsBumpChainsOpen] = useState(false);
+  const [activeView, setActiveView] = useState<'planner' | 'summary'>('planner');
   const [isSnapshotsOpen, setIsSnapshotsOpen] = useState(false);
   const [snapshotLabel, setSnapshotLabel] = useState("");
   const [snapshotList, setSnapshotList] = useState<SnapshotMeta[]>([]);
@@ -1163,16 +1164,20 @@ export default function Dashboard() {
   };
 
   const activeSummary = useMemo(() => {
-    const counts: Record<string, number> = {};
-    actives.forEach(a => { counts[a.id] = 0; });
+    const conversations: Record<string, { pnmName: string; roundName: string }[]> = {};
+    actives.forEach(a => { conversations[a.id] = []; });
     rounds.forEach(round => {
       round.pnms.forEach(pnm => {
-        if (pnm.matchedWith && counts[pnm.matchedWith] !== undefined) counts[pnm.matchedWith]++;
-        if (pnm.secondMatch && counts[pnm.secondMatch] !== undefined) counts[pnm.secondMatch]++;
+        if (pnm.matchedWith && conversations[pnm.matchedWith] !== undefined) {
+          conversations[pnm.matchedWith].push({ pnmName: pnm.name, roundName: round.name });
+        }
+        if (pnm.secondMatch && conversations[pnm.secondMatch] !== undefined) {
+          conversations[pnm.secondMatch].push({ pnmName: pnm.name, roundName: round.name });
+        }
       });
     });
     return actives
-      .map(a => ({ id: a.id, name: a.name, count: counts[a.id] || 0 }))
+      .map(a => ({ id: a.id, name: a.name, count: conversations[a.id].length, pnms: conversations[a.id] }))
       .sort((a, b) => b.count - a.count);
   }, [rounds, actives]);
 
@@ -1514,7 +1519,15 @@ export default function Dashboard() {
           <ResizablePanelGroup direction="horizontal" className="flex-1 overflow-hidden">
           <ResizablePanel defaultSize={70} minSize={40}>
             <div className="h-full flex flex-col bg-white/92 border border-slate-200/80 shadow-[0_20px_40px_-30px_rgba(15,23,42,0.28)] overflow-hidden">
-              <div className="px-3 py-2.5 border-b border-slate-200/80 flex items-center justify-between gap-3 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,250,252,0.86))]">
+
+              {/* View tabs */}
+              <div className="flex border-b border-slate-200/80 shrink-0 bg-white/95 px-1">
+                <button onClick={() => setActiveView('planner')} className={`px-4 py-2.5 text-[11px] font-semibold border-b-2 transition-colors ${activeView === 'planner' ? 'border-violet-500 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`} data-testid="tab-planner">Planner</button>
+                <button onClick={() => setActiveView('summary')} className={`px-4 py-2.5 text-[11px] font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${activeView === 'summary' ? 'border-violet-500 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`} data-testid="tab-active-summary"><BarChart2 className="w-3 h-3" />Active Summary</button>
+              </div>
+
+              {activeView === 'planner' ? (<>
+              <div className="px-3 py-2.5 border-b border-slate-200/80 flex items-center justify-between gap-3 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,250,252,0.86))] shrink-0">
                 <div className="flex items-center gap-2.5 flex-1 flex-wrap">
                   <div className="h-8 w-8 border border-slate-200 bg-white flex items-center justify-center shadow-sm shrink-0">
                     <Search className="h-3.5 w-3.5 text-slate-500" />
@@ -1632,6 +1645,48 @@ export default function Dashboard() {
                   </TableBody>
                 </Table>
               </ScrollArea>
+              </>) : (
+                /* ── Active Summary Tab ── */
+                <ScrollArea className="flex-1">
+                  <Table className="rounded-none">
+                    <TableHeader className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-md shadow-[inset_0_-1px_0_rgba(226,232,240,0.95)]">
+                      <TableRow className="border-b border-slate-200/90 bg-slate-50/95 hover:bg-slate-50/95">
+                        <TableHead className="py-1 h-8 text-[10px] uppercase font-bold bg-slate-50/95 w-40">Active</TableHead>
+                        <TableHead className="py-1 h-8 text-[10px] uppercase font-bold bg-slate-50/95 w-20">Convos</TableHead>
+                        <TableHead className="py-1 h-8 text-[10px] uppercase font-bold bg-slate-50/95">PNMs Talked To (All Rounds)</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {activeSummary.length === 0 ? (
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell colSpan={3} className="py-10 text-center text-[11px] text-slate-400">No actives imported yet.</TableCell>
+                        </TableRow>
+                      ) : activeSummary.map(a => (
+                        <TableRow key={a.id} className="align-top" data-testid={`row-summary-${a.id}`}>
+                          <TableCell className="py-2.5 text-[12px] font-semibold text-slate-800 whitespace-nowrap">{a.name}</TableCell>
+                          <TableCell className="py-2.5">
+                            <span className={`inline-flex items-center justify-center h-6 min-w-[24px] px-1.5 text-[11px] font-bold rounded-sm ${a.count === 0 ? 'bg-slate-100 text-slate-400' : 'bg-violet-100 text-violet-700'}`} data-testid={`text-summary-count-${a.id}`}>{a.count}</span>
+                          </TableCell>
+                          <TableCell className="py-2.5">
+                            {a.pnms.length === 0 ? (
+                              <span className="text-[11px] text-slate-300">—</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {a.pnms.map((p, i) => (
+                                  <span key={i} className="inline-flex items-center gap-1 text-[10px] bg-slate-100 px-1.5 py-0.5 text-slate-700" data-testid={`chip-pnm-${a.id}-${i}`}>
+                                    {p.pnmName}
+                                    <span className="text-slate-400 text-[9px]">· {p.roundName}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              )}
             </div>
           </ResizablePanel>
 
@@ -1721,20 +1776,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Active Summary — all rounds */}
-              <div className="mt-2 shrink-0 border-t border-slate-100 pt-2">
-                <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-1.5 px-0.5" data-testid="text-active-summary-title">Active Summary · All Rounds</p>
-                <ScrollArea className="max-h-32">
-                  <div className="space-y-0.5">
-                    {activeSummary.map(a => (
-                      <div key={a.id} className="flex items-center justify-between px-1 py-0.5 rounded-sm hover:bg-slate-50" data-testid={`row-active-summary-${a.id}`}>
-                        <span className="text-[10px] text-slate-600 truncate">{a.name}</span>
-                        <span className={`text-[10px] font-semibold shrink-0 ml-2 ${a.count === 0 ? 'text-slate-300' : 'text-violet-600'}`} data-testid={`text-active-count-${a.id}`}>{a.count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </div>
             </div>
           </ResizablePanel>
           </ResizablePanelGroup>

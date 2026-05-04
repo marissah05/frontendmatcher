@@ -1620,9 +1620,9 @@ export default function Dashboard() {
                             {chainAnalysis.chains.map((chain, idx) => (
                               <div key={idx} className={`p-3 bg-slate-50 border text-sm font-medium shadow-sm flex items-start justify-between gap-4 ${chain.isOverLimit ? 'border-red-300 bg-red-50' : 'border-slate-100 text-slate-700'}`}>
                                 <div className={`flex flex-wrap items-center ${chain.isOverLimit ? 'text-red-800' : ''}`}>
-                                  <span className={chain.isOverLimit ? 'text-red-400' : 'text-slate-400'}>{chain.starterName}</span>
+                                  <span className={`font-bold ${chain.isOverLimit ? 'text-red-700' : 'text-slate-800'}`}>{chain.starterName}</span>
                                   <span className={chain.isOverLimit ? 'text-red-300 px-1' : 'text-slate-300 px-1'}>→</span>
-                                  <span>{chain.handoffDisplay}</span>
+                                  <span className={chain.isOverLimit ? 'text-red-700' : 'text-slate-500'}>{chain.handoffDisplay}</span>
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
                                   {chain.isOverLimit && <AlertTriangle className="w-4 h-4 text-red-500" />}

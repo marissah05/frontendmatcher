@@ -137,6 +137,44 @@ function ReviewsTab({
 
   const allPnmsCount = rounds.flatMap(r => r.pnms).filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i).length;
 
+  const importFileRef = useRef<HTMLInputElement>(null);
+
+  const handleExportComments = () => {
+    const blob = new Blob([JSON.stringify(reviews, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `matchops-comments-${date}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportComments = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string);
+        if (!Array.isArray(parsed)) throw new Error("Invalid format");
+        setReviews(prev => {
+          const merged = [...prev];
+          for (const incoming of parsed) {
+            const idx = merged.findIndex(r => r.id === incoming.id);
+            if (idx >= 0) merged[idx] = incoming;
+            else merged.push(incoming);
+          }
+          return merged;
+        });
+      } catch {
+        alert("Could not read the file. Make sure it's a valid MatchOps comments export.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
   return (
     <>
     <div className="px-3 py-1 border-b border-slate-200/80 shrink-0 flex items-center gap-2 bg-white/95">
@@ -149,6 +187,34 @@ function ReviewsTab({
         data-testid="input-comments-search"
       />
       {commentsSearch && <button onClick={() => setCommentsSearch("")} className="text-[10px] text-slate-400 hover:text-slate-600">✕</button>}
+      <div className="flex items-center gap-1 shrink-0 ml-1">
+        <button
+          onClick={handleExportComments}
+          className="flex items-center gap-1 h-6 px-2 text-[9px] font-bold uppercase tracking-wide border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-colors"
+          data-testid="button-export-comments"
+          title="Export all comments to a JSON file"
+        >
+          <Download className="h-2.5 w-2.5" />
+          Export
+        </button>
+        <button
+          onClick={() => importFileRef.current?.click()}
+          className="flex items-center gap-1 h-6 px-2 text-[9px] font-bold uppercase tracking-wide border border-violet-200 bg-violet-50 text-violet-600 hover:bg-violet-100 transition-colors"
+          data-testid="button-import-comments"
+          title="Import comments from a previously exported file"
+        >
+          <Upload className="h-2.5 w-2.5" />
+          Import
+        </button>
+        <input
+          ref={importFileRef}
+          type="file"
+          accept=".json"
+          className="hidden"
+          onChange={handleImportComments}
+          data-testid="input-import-comments-file"
+        />
+      </div>
     </div>
     <ScrollArea className="flex-1">
       {uniquePnms.length === 0 ? (

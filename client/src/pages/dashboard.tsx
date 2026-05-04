@@ -277,6 +277,7 @@ export default function Dashboard() {
   const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
   const [chainLengthLimit, setChainLengthLimit] = useState(6);
   const [isCycleResolverOpen, setIsCycleResolverOpen] = useState(false);
+  const [isBump2Enabled, setIsBump2Enabled] = useState(true);
   const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(true);
   const [isLinkedHoverEnabled, setIsLinkedHoverEnabled] = useState(false);
   const [hoveredActiveId, setHoveredActiveId] = useState<string | null>(null);
@@ -1898,7 +1899,7 @@ export default function Dashboard() {
                   <div className="h-8 border border-violet-200 bg-violet-50/80 px-3 flex items-center gap-2 shadow-[0_10px_20px_-18px_rgba(91,33,182,0.45)]">
                     <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-violet-500">Round Progress</span>
                     <span className="text-[11px] font-semibold text-violet-800" data-testid="text-round-match-summary">
-                      {activeRound.pnms.filter((pnm) => pnm.matchedWith && pnm.secondMatch).length} / {activeRound.pnms.length} fully matched
+                      {activeRound.pnms.filter((pnm) => isBump2Enabled ? (pnm.matchedWith && pnm.secondMatch) : pnm.matchedWith).length} / {activeRound.pnms.length} fully matched
                     </span>
                   </div>
                   <Dialog open={isPnmImportOpen} onOpenChange={setIsPnmImportOpen}>
@@ -1939,7 +1940,19 @@ export default function Dashboard() {
                       <TableHead className="py-1 h-8 text-[10px] uppercase font-bold bg-slate-50/95">Status</TableHead>
                       <TableHead className="py-1 h-8 text-[10px] uppercase font-bold bg-slate-50/95">PNM Name & ID</TableHead>
                       <TableHead className="py-1 h-8 text-[10px] uppercase font-bold bg-slate-50/95">Bump Match 1</TableHead>
-                      <TableHead className="py-1 h-8 text-[10px] uppercase font-bold bg-slate-50/95">Bump Match 2</TableHead>
+                      <TableHead className="py-1 h-8 text-[10px] uppercase font-bold bg-slate-50/95">
+                        <div className="flex items-center gap-2">
+                          <span className={isBump2Enabled ? '' : 'text-slate-300'}>Bump Match 2</span>
+                          <button
+                            onClick={() => setIsBump2Enabled(v => !v)}
+                            className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 border transition-colors ${isBump2Enabled ? 'bg-violet-100 border-violet-300 text-violet-700 hover:bg-violet-200' : 'bg-slate-100 border-slate-300 text-slate-400 hover:bg-slate-200'}`}
+                            data-testid="button-toggle-bump2"
+                            title={isBump2Enabled ? 'Disable Bump Match 2' : 'Enable Bump Match 2'}
+                          >
+                            {isBump2Enabled ? 'On' : 'Off'}
+                          </button>
+                        </div>
+                      </TableHead>
                       <TableHead className="py-1 h-8 text-[10px] uppercase font-bold w-10 bg-slate-50/95"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1972,6 +1985,7 @@ export default function Dashboard() {
                               dropPreview1={dropWarnings.get(`${pnm.id}-1`)}
                               dropPreview2={dropWarnings.get(`${pnm.id}-2`)}
                               highlightedActiveIds={highlightedActiveIds}
+                              isBump2Enabled={isBump2Enabled}
                             />
                           );
                         })}
@@ -2139,41 +2153,45 @@ export default function Dashboard() {
                     </div>
                   </ScrollArea>
                 </div>
-                <div className="w-px bg-slate-200/80 shrink-0" />
-                <div className="flex-1 flex flex-col overflow-hidden border border-violet-200/70 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,0.96))] shadow-[0_12px_24px_-22px_rgba(15,23,42,0.22)]">
-                  <div className="flex items-center justify-between gap-2 py-2 px-2.5 border-b border-violet-100 shrink-0 bg-violet-50/70">
-                    <div>
-                      <div className="text-[8px] font-bold text-violet-700 uppercase tracking-[0.18em]">M2 Pool</div>
-                      <div className="text-[9px] text-slate-500">{usedActivesSlot2.size} matched · {actives.length - usedActivesSlot2.size} open</div>
+                {isBump2Enabled && (
+                  <>
+                    <div className="w-px bg-slate-200/80 shrink-0" />
+                    <div className="flex-1 flex flex-col overflow-hidden border border-violet-200/70 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,0.96))] shadow-[0_12px_24px_-22px_rgba(15,23,42,0.22)]">
+                      <div className="flex items-center justify-between gap-2 py-2 px-2.5 border-b border-violet-100 shrink-0 bg-violet-50/70">
+                        <div>
+                          <div className="text-[8px] font-bold text-violet-700 uppercase tracking-[0.18em]">M2 Pool</div>
+                          <div className="text-[9px] text-slate-500">{usedActivesSlot2.size} matched · {actives.length - usedActivesSlot2.size} open</div>
+                        </div>
+                        <Badge variant="outline" className="h-5 rounded-none border-violet-200 bg-white px-1.5 text-[9px] text-violet-700">{actives.length}</Badge>
+                      </div>
+                      <ScrollArea 
+                        className="flex-1"
+                        viewportRef={pool2Ref}
+                      >
+                        <div className="space-y-1.5 p-2 pb-4">
+                          {actives.map(active => {
+                            const isHighlighted = highlightedActiveIds.has(active.id);
+                            return (
+                              <ActiveDraggable
+                                key={`${active.id}-2`}
+                                active={{ ...active, id: `${active.id}-2` }}
+                                isMatched={usedActivesSlot2.has(active.id)}
+                                isHighlighted={isHighlighted}
+                                isDimmed={hasLinkedHighlight && !isHighlighted}
+                                onHoverStart={() => setHoveredActiveId(active.id)}
+                                onHoverEnd={() => setHoveredActiveId(current => current === active.id ? null : current)}
+                                onRightClick={(event) => {
+                                  event.preventDefault();
+                                  handleDeleteActive(active.id);
+                                }}
+                              />
+                            );
+                          })}
+                        </div>
+                      </ScrollArea>
                     </div>
-                    <Badge variant="outline" className="h-5 rounded-none border-violet-200 bg-white px-1.5 text-[9px] text-violet-700">{actives.length}</Badge>
-                  </div>
-                  <ScrollArea 
-                    className="flex-1"
-                    viewportRef={pool2Ref}
-                  >
-                    <div className="space-y-1.5 p-2 pb-4">
-                      {actives.map(active => {
-                        const isHighlighted = highlightedActiveIds.has(active.id);
-                        return (
-                          <ActiveDraggable
-                            key={`${active.id}-2`}
-                            active={{ ...active, id: `${active.id}-2` }}
-                            isMatched={usedActivesSlot2.has(active.id)}
-                            isHighlighted={isHighlighted}
-                            isDimmed={hasLinkedHighlight && !isHighlighted}
-                            onHoverStart={() => setHoveredActiveId(active.id)}
-                            onHoverEnd={() => setHoveredActiveId(current => current === active.id ? null : current)}
-                            onRightClick={(event) => {
-                              event.preventDefault();
-                              handleDeleteActive(active.id);
-                            }}
-                          />
-                        );
-                      })}
-                    </div>
-                  </ScrollArea>
-                </div>
+                  </>
+                )}
               </div>
 
             </div>

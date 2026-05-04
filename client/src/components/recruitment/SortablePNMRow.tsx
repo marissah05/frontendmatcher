@@ -33,9 +33,10 @@ interface SortablePNMRowProps {
     wouldCycle: boolean;
   };
   highlightedActiveIds: Set<string>;
+  isBump2Enabled?: boolean;
 }
 
-export default function SortablePNMRow({ pnm, pnms, actives, rowIndex, onUnmatch, onClearBoth, onDelete, onHoverStart, onHoverEnd, isHighlighted, isDimmed, dropPreview1, dropPreview2, highlightedActiveIds }: SortablePNMRowProps) {
+export default function SortablePNMRow({ pnm, pnms, actives, rowIndex, onUnmatch, onClearBoth, onDelete, onHoverStart, onHoverEnd, isHighlighted, isDimmed, dropPreview1, dropPreview2, highlightedActiveIds, isBump2Enabled = true }: SortablePNMRowProps) {
   const {
     attributes,
     listeners,
@@ -50,22 +51,25 @@ export default function SortablePNMRow({ pnm, pnms, actives, rowIndex, onUnmatch
     transition,
   };
 
-  const filledCount = [pnm.matchedWith, pnm.secondMatch].filter(Boolean).length;
+  const filledCount = isBump2Enabled
+    ? [pnm.matchedWith, pnm.secondMatch].filter(Boolean).length
+    : [pnm.matchedWith].filter(Boolean).length;
+  const totalSlots = isBump2Enabled ? 2 : 1;
   const hasDuplicate1 = !!pnm.matchedWith && pnms.some(otherPnm => otherPnm.id !== pnm.id && otherPnm.matchedWith === pnm.matchedWith);
-  const hasDuplicate2 = !!pnm.secondMatch && pnms.some(otherPnm => otherPnm.id !== pnm.id && otherPnm.secondMatch === pnm.secondMatch);
+  const hasDuplicate2 = isBump2Enabled && !!pnm.secondMatch && pnms.some(otherPnm => otherPnm.id !== pnm.id && otherPnm.secondMatch === pnm.secondMatch);
   const hasDuplicate = hasDuplicate1 || hasDuplicate2;
 
   const getStatusBadge = () => {
     if (hasDuplicate) {
       return <Badge className="bg-red-500 hover:bg-red-600 text-white border-none rounded-none text-[9px] h-5 px-1.5 uppercase font-bold">Conflict</Badge>;
     }
-    if (filledCount === 2) {
+    if (filledCount === totalSlots) {
       return <Badge className="bg-green-500 hover:bg-green-600 text-white border-none rounded-none text-[9px] h-5 px-1.5 uppercase font-bold">Ready</Badge>;
     }
-    if (filledCount === 1) {
+    if (filledCount >= 1) {
       return <Badge className="bg-amber-400 hover:bg-amber-500 text-white border-none rounded-none text-[9px] h-5 px-1.5 uppercase font-bold text-nowrap">Missing 1</Badge>;
     }
-    return <Badge className="bg-red-500 hover:bg-red-600 text-white border-none rounded-none text-[9px] h-5 px-1.5 uppercase font-bold text-nowrap">Missing Both</Badge>;
+    return <Badge className="bg-red-500 hover:bg-red-600 text-white border-none rounded-none text-[9px] h-5 px-1.5 uppercase font-bold text-nowrap">Unmatched</Badge>;
   };
 
   return (
@@ -115,18 +119,22 @@ export default function SortablePNMRow({ pnm, pnms, actives, rowIndex, onUnmatch
           dropPreview={dropPreview1}
         />
       </TableCell>
-      <TableCell className="py-0.5">
-        <PNMDropZone
-          pnm={pnm}
-          slot={2}
-          matchedActiveName={actives.find(a => a.id === pnm.secondMatch)?.name}
-          onUnmatch={onUnmatch}
-          isDuplicate={hasDuplicate2}
-          isHighlighted={!!pnm.secondMatch && highlightedActiveIds.has(pnm.secondMatch)}
-          isDimmed={isDimmed}
-          dropPreview={dropPreview2}
-        />
-      </TableCell>
+      {isBump2Enabled ? (
+        <TableCell className="py-0.5">
+          <PNMDropZone
+            pnm={pnm}
+            slot={2}
+            matchedActiveName={actives.find(a => a.id === pnm.secondMatch)?.name}
+            onUnmatch={onUnmatch}
+            isDuplicate={hasDuplicate2}
+            isHighlighted={!!pnm.secondMatch && highlightedActiveIds.has(pnm.secondMatch)}
+            isDimmed={isDimmed}
+            dropPreview={dropPreview2}
+          />
+        </TableCell>
+      ) : (
+        <TableCell className="py-0.5 text-slate-200 text-[10px] text-center select-none">—</TableCell>
+      )}
       <TableCell className="py-0.5 w-20">
         <div className="flex items-center gap-0.5">
           {(pnm.matchedWith || pnm.secondMatch) && (

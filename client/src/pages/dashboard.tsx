@@ -276,6 +276,7 @@ export default function Dashboard() {
   const [snapshotList, setSnapshotList] = useState<SnapshotMeta[]>([]);
   const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
   const [chainLengthLimit, setChainLengthLimit] = useState(6);
+  const [isCycleResolverOpen, setIsCycleResolverOpen] = useState(false);
   const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(true);
   const [isLinkedHoverEnabled, setIsLinkedHoverEnabled] = useState(false);
   const [hoveredActiveId, setHoveredActiveId] = useState<string | null>(null);
@@ -607,6 +608,7 @@ export default function Dashboard() {
       activeToChain,
       longestChainCount: chains.reduce((max, chain) => Math.max(max, chain.count), 0),
       overLimitCount: chains.filter(chain => chain.isOverLimit).length,
+      cycleCount: chains.filter(chain => chain.isCycle).length,
     };
   };
 
@@ -1683,6 +1685,102 @@ export default function Dashboard() {
                       </div>
                     </DialogContent>
                   </Dialog>
+
+                  {/* Fix Cycles — only shown when cycles exist */}
+                  {chainAnalysis.cycleCount > 0 && (
+                    <Dialog open={isCycleResolverOpen} onOpenChange={setIsCycleResolverOpen}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="sm" className={`h-10 text-[11px] rounded-none w-full bg-orange-50/95 hover:bg-orange-100 border-orange-300 text-orange-700 shadow-[0_12px_24px_-22px_rgba(234,88,12,0.35)] ${isToolsMenuOpen ? 'justify-start px-3.5' : 'justify-center px-0'}`} data-testid="button-fix-cycles">
+                          <AlertTriangle className={`w-3 h-3 ${isToolsMenuOpen ? 'mr-2' : ''}`} />
+                          {isToolsMenuOpen ? `Fix Cycles (${chainAnalysis.cycleCount})` : null}
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-xl max-h-[80vh] flex flex-col rounded-none overflow-hidden">
+                        <DialogHeader>
+                          <DialogTitle>Resolve Bump Cycles</DialogTitle>
+                          <DialogDescription>
+                            Each cycle below has no free active to start the chain. Click a replacement M2 to break it.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="overflow-y-auto flex-1 min-h-0 space-y-6 py-2">
+                          {chainAnalysis.chains.filter(c => c.isCycle).map((cycle, cycleIdx) => {
+                            // For each active in the cycle, find the PNM they are M1 for —
+                            // that PNM's M2 is the edge that closes the cycle and is the fixable point.
+                            const fixPoints = cycle.activeIds.map(activeId => {
+                              const pnm = activeRound.pnms.find(p => p.matchedWith === activeId);
+                              if (!pnm || !pnm.secondMatch) return null;
+                              const m1Name = activeNameById.get(activeId) || activeId;
+                              const m2Name = activeNameById.get(pnm.secondMatch) || pnm.secondMatch;
+                              // Available replacements: not currently used as M2 anywhere, not the PNM's own M1
+                              const available = actives.filter(a =>
+                                !usedActivesSlot2.has(a.id) &&
+                                a.id !== activeId &&
+                                a.id !== pnm.secondMatch
+                              );
+                              return { pnm, m1Name, m2Name, available };
+                            }).filter(Boolean) as { pnm: PNM; m1Name: string; m2Name: string; available: Active[] }[];
+
+                            return (
+                              <div key={cycleIdx} className="border border-orange-200 bg-orange-50/50 p-4 space-y-3">
+                                <div className="flex items-center gap-2">
+                                  <AlertTriangle className="w-4 h-4 text-orange-500 shrink-0" />
+                                  <span className="text-sm font-bold text-orange-700">
+                                    Cycle {cycleIdx + 1}: {cycle.activeIds.map(id => activeNameById.get(id) || id).join(' ↔ ')}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-orange-600">
+                                  Pick any row below and click a replacement to assign a new M2 for that PNM, breaking the cycle.
+                                </p>
+                                <div className="space-y-3">
+                                  {fixPoints.map(({ pnm, m1Name, m2Name, available }) => (
+                                    <div key={pnm.id} className="bg-white border border-orange-100 p-3 space-y-2">
+                                      <div className="text-[11px] text-slate-600">
+                                        <span className="font-semibold text-slate-800">{pnm.name}</span>
+                                        <span className="text-slate-400"> · M1: </span>
+                                        <span className="font-medium text-sky-700">{m1Name}</span>
+                                        <span className="text-slate-400"> · current M2: </span>
+                                        <span className="font-medium text-violet-700 line-through decoration-red-400">{m2Name}</span>
+                                      </div>
+                                      {available.length > 0 ? (
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {available.map(a => (
+                                            <button
+                                              key={a.id}
+                                              onClick={() => {
+                                                pushUndoState();
+                                                setRounds(prev => prev.map(r => {
+                                                  if (r.id !== activeRoundId) return r;
+                                                  return {
+                                                    ...r,
+                                                    pnms: r.pnms.map(p => {
+                                                      if (p.id !== pnm.id) return p;
+                                                      return { ...p, secondMatch: a.id, status: 'matched' as const };
+                                                    }),
+                                                  };
+                                                }));
+                                                toast.success(`Assigned ${a.name} as M2 for ${pnm.name}`);
+                                                if (chainAnalysis.cycleCount <= 1) setIsCycleResolverOpen(false);
+                                              }}
+                                              className="px-2.5 py-1 text-[11px] font-medium bg-green-50 border border-green-200 text-green-700 hover:bg-green-100 hover:border-green-400 transition-colors rounded-none"
+                                              data-testid={`button-replace-${pnm.id}-${a.id}`}
+                                            >
+                                              {a.name}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <p className="text-[11px] text-slate-400 italic">No unassigned M2 actives available — clear another M2 slot first.</p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  )}
 
                   <Button variant="outline" size="sm" className={`h-10 text-[11px] rounded-none w-full bg-blue-50/95 hover:bg-blue-100 border-blue-200 text-blue-700 shadow-[0_12px_24px_-22px_rgba(59,130,246,0.35)] ${isToolsMenuOpen ? 'justify-start px-3.5' : 'justify-center px-0'}`} onClick={() => fileInputRef.current?.click()} data-testid="button-import-csv">
                     <Upload className={`w-3 h-3 ${isToolsMenuOpen ? 'mr-2' : ''}`} />

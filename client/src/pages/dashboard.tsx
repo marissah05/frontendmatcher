@@ -1619,21 +1619,52 @@ export default function Dashboard() {
                       <ScrollArea className="flex-1 -mx-4 px-4 py-2">
                         {chainAnalysis.chains.length > 0 ? (
                           <div className="space-y-2">
-                            {chainAnalysis.chains.map((chain, idx) => (
-                              <div key={idx} className={`p-3 bg-slate-50 border text-sm font-medium shadow-sm flex items-start justify-between gap-4 ${chain.isOverLimit ? 'border-red-300 bg-red-50' : 'border-slate-100 text-slate-700'}`}>
-                                <div className={`flex flex-wrap items-center ${chain.isOverLimit ? 'text-red-800' : ''}`}>
-                                  <span className={`font-bold ${chain.isOverLimit ? 'text-red-700' : 'text-slate-800'}`}>{chain.starterName}</span>
-                                  <span className={chain.isOverLimit ? 'text-red-300 px-1' : 'text-slate-300 px-1'}>→</span>
-                                  <span className={chain.isOverLimit ? 'text-red-700' : 'text-slate-500'}>{chain.handoffDisplay}</span>
+                            {chainAnalysis.chains.map((chain, idx) => {
+                              const borderCls = chain.isCycle
+                                ? 'border-orange-300 bg-orange-50'
+                                : chain.isOverLimit
+                                ? 'border-red-300 bg-red-50'
+                                : 'border-slate-100 bg-slate-50 text-slate-700';
+                              const nameCls = chain.isCycle
+                                ? 'text-orange-700'
+                                : chain.isOverLimit
+                                ? 'text-red-700'
+                                : 'text-slate-800';
+                              const arrowCls = chain.isCycle
+                                ? 'text-orange-300 px-1'
+                                : chain.isOverLimit
+                                ? 'text-red-300 px-1'
+                                : 'text-slate-300 px-1';
+                              const restCls = chain.isCycle
+                                ? 'text-orange-600'
+                                : chain.isOverLimit
+                                ? 'text-red-700'
+                                : 'text-slate-500';
+                              return (
+                                <div key={idx} className={`p-3 border text-sm font-medium shadow-sm flex flex-col gap-1 ${borderCls}`}>
+                                  {chain.isCycle && (
+                                    <div className="flex items-center gap-1.5 mb-1">
+                                      <AlertTriangle className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                                      <span className="text-[10px] font-bold uppercase tracking-wider text-orange-600">Cycle — no free starter</span>
+                                      <span className="text-[10px] text-orange-500 normal-case font-normal">Everyone in this loop is already seated. Reassign one M2 to break it.</span>
+                                    </div>
+                                  )}
+                                  <div className="flex items-start justify-between gap-4">
+                                    <div className="flex flex-wrap items-center">
+                                      <span className={`font-bold ${nameCls}`}>{chain.starterName}</span>
+                                      <span className={arrowCls}>→</span>
+                                      <span className={restCls}>{chain.handoffDisplay}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      {chain.isOverLimit && !chain.isCycle && <AlertTriangle className="w-4 h-4 text-red-500" />}
+                                      <Badge variant="outline" className={`text-[10px] rounded-none ${chain.isCycle ? 'bg-orange-100 text-orange-700 border-orange-200' : chain.isOverLimit ? 'bg-red-100 text-red-700 border-red-200' : ''}`}>
+                                        {chain.count}
+                                      </Badge>
+                                    </div>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                  {chain.isOverLimit && <AlertTriangle className="w-4 h-4 text-red-500" />}
-                                  <Badge variant="outline" className={`text-[10px] rounded-none ${chain.isOverLimit ? 'bg-red-100 text-red-700 border-red-200' : ''}`}>
-                                    {chain.count}
-                                  </Badge>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         ) : (
                           <div className="flex flex-col items-center justify-center py-12 text-slate-400">

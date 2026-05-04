@@ -28,7 +28,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Search, ClipboardPaste, UserCheck, Users, Trash2, Download, Upload, GitMerge, ListOrdered, AlertTriangle, Wand2, Settings2, ChevronLeft, ChevronRight, RotateCcw, Save, BookMarked, Clock, BarChart2 } from "lucide-react";
+import { Search, ClipboardPaste, UserCheck, Users, Trash2, Download, Upload, GitMerge, ListOrdered, AlertTriangle, Wand2, Settings2, ChevronLeft, ChevronRight, RotateCcw, Save, BookMarked, Clock, BarChart2, Star, MessageSquare, ChevronDown } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -63,10 +63,163 @@ interface SnapshotMeta {
   createdAt: string;
 }
 
+interface PnmReview {
+  id: string;
+  pnmId: string;
+  activeId: string;
+  activeName: string;
+  pnmName: string;
+  stars: number;
+  note: string;
+  updatedAt: string;
+}
+
 const INITIAL_ROUNDS: RoundData[] = [
   { id: "r1", name: "Round 1", sortOrder: 0, pnms: MOCK_PNMS },
   { id: "r2", name: "Round 2", sortOrder: 1, pnms: MOCK_PNMS.slice(0, 2) },
 ];
+
+// ── ReviewsTab component ───────────────────────────────────────────────────────
+function ReviewsTab({
+  rounds, actives, reviews, setReviews,
+  expandedPnmId, setExpandedPnmId,
+  reviewDraft, setReviewDraft,
+  savingReviewId, setSavingReviewId,
+}: {
+  rounds: RoundData[];
+  actives: Active[];
+  reviews: PnmReview[];
+  setReviews: React.Dispatch<React.SetStateAction<PnmReview[]>>;
+  expandedPnmId: string | null;
+  setExpandedPnmId: React.Dispatch<React.SetStateAction<string | null>>;
+  reviewDraft: Record<string, { stars: number; note: string }>;
+  setReviewDraft: React.Dispatch<React.SetStateAction<Record<string, { stars: number; note: string }>>>;
+  savingReviewId: string | null;
+  setSavingReviewId: React.Dispatch<React.SetStateAction<string | null>>;
+}) {
+  const seenNames = new Set<string>();
+  const uniquePnms = rounds.flatMap(r => r.pnms).filter(p => {
+    if (seenNames.has(p.name)) return false;
+    seenNames.add(p.name);
+    return true;
+  });
+
+  const saveReview = async (pnmId: string, activeId: string, activeName: string, pnmName: string, stars: number, note: string) => {
+    const id = `rev_${pnmId}_${activeId}`;
+    setSavingReviewId(id);
+    try {
+      const res = await fetch(`/api/reviews/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pnmId, activeId, activeName, pnmName, stars, note }),
+      });
+      if (res.ok) {
+        const saved: PnmReview = await res.json();
+        setReviews(prev => [...prev.filter(r => r.id !== saved.id), saved]);
+      }
+    } finally {
+      setSavingReviewId(null);
+    }
+  };
+
+  return (
+    <ScrollArea className="flex-1">
+      {uniquePnms.length === 0 ? (
+        <div className="py-16 text-center text-[11px] text-slate-400">No PNMs imported yet.</div>
+      ) : uniquePnms.map(pnm => {
+        const pnmReviewsList = reviews.filter(r => r.pnmId === pnm.id);
+        const avgStars = pnmReviewsList.length > 0
+          ? pnmReviewsList.reduce((s, r) => s + r.stars, 0) / pnmReviewsList.length
+          : null;
+        const isExpanded = expandedPnmId === pnm.id;
+
+        return (
+          <div key={pnm.id} className="border-b border-slate-100 last:border-0" data-testid={`review-section-${pnm.id}`}>
+            <button
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+              onClick={() => setExpandedPnmId(isExpanded ? null : pnm.id)}
+              data-testid={`btn-expand-pnm-${pnm.id}`}
+            >
+              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
+              <span className="flex-1 text-[12px] font-semibold text-slate-800">{pnm.name}</span>
+              {avgStars !== null ? (
+                <span className="flex items-center gap-1 shrink-0" data-testid={`text-avg-stars-${pnm.id}`}>
+                  {[1,2,3,4,5].map(s => (
+                    <Star key={s} className={`w-3 h-3 ${s <= Math.round(avgStars) ? 'text-amber-400 fill-amber-400' : 'text-slate-200'}`} />
+                  ))}
+                  <span className="text-[10px] text-slate-500 ml-1">{avgStars.toFixed(1)} · {pnmReviewsList.length} review{pnmReviewsList.length !== 1 ? 's' : ''}</span>
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-300 shrink-0">No reviews yet</span>
+              )}
+            </button>
+
+            {isExpanded && (
+              <div className="bg-slate-50/60 border-t border-slate-100 px-4 pt-3 pb-4 space-y-4">
+                {actives.length === 0 && (
+                  <p className="text-[11px] text-slate-400">Import actives first to leave reviews.</p>
+                )}
+                {actives.map(active => {
+                  const reviewId = `rev_${pnm.id}_${active.id}`;
+                  const existing = reviews.find(r => r.id === reviewId);
+                  const draft = reviewDraft[reviewId];
+                  const currentStars = draft?.stars ?? existing?.stars ?? 0;
+                  const currentNote = draft?.note ?? existing?.note ?? "";
+                  const isSaving = savingReviewId === reviewId;
+                  const isDirty = draft !== undefined && (draft.stars !== (existing?.stars ?? 0) || draft.note !== (existing?.note ?? ""));
+
+                  return (
+                    <div key={active.id} className="bg-white border border-slate-200 p-3" data-testid={`review-form-${pnm.id}-${active.id}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-semibold text-slate-700">{active.name}</span>
+                        {existing && !isDirty && <span className="text-[9px] text-slate-400">Saved</span>}
+                      </div>
+                      <div className="flex items-center gap-1 mb-2.5">
+                        {[1,2,3,4,5].map(s => (
+                          <button
+                            key={s}
+                            onClick={() => setReviewDraft(prev => ({ ...prev, [reviewId]: { stars: s, note: prev[reviewId]?.note ?? existing?.note ?? "" } }))}
+                            className="transition-transform hover:scale-110"
+                            data-testid={`star-${pnm.id}-${active.id}-${s}`}
+                          >
+                            <Star className={`w-5 h-5 ${s <= currentStars ? 'text-amber-400 fill-amber-400' : 'text-slate-200 hover:text-amber-300'}`} />
+                          </button>
+                        ))}
+                        {currentStars > 0 && (
+                          <button onClick={() => setReviewDraft(prev => ({ ...prev, [reviewId]: { stars: 0, note: prev[reviewId]?.note ?? existing?.note ?? "" } }))} className="ml-1 text-[9px] text-slate-400 hover:text-slate-600">clear</button>
+                        )}
+                      </div>
+                      <Textarea
+                        placeholder={`${active.name}'s notes on ${pnm.name}…`}
+                        className="text-[11px] resize-none h-16 rounded-none border-slate-200 bg-slate-50 shadow-none focus:bg-white"
+                        value={currentNote}
+                        onChange={e => setReviewDraft(prev => ({ ...prev, [reviewId]: { stars: prev[reviewId]?.stars ?? existing?.stars ?? 0, note: e.target.value } }))}
+                        data-testid={`textarea-review-${pnm.id}-${active.id}`}
+                      />
+                      {(isDirty || (currentStars > 0 && !existing)) && (
+                        <button
+                          disabled={isSaving || currentStars === 0}
+                          onClick={async () => {
+                            await saveReview(pnm.id, active.id, active.name, pnm.name, currentStars, currentNote);
+                            setReviewDraft(prev => { const n = { ...prev }; delete n[reviewId]; return n; });
+                          }}
+                          className="mt-2 px-3 py-1 text-[10px] font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          data-testid={`btn-save-review-${pnm.id}-${active.id}`}
+                        >
+                          {isSaving ? "Saving…" : "Save Review"}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </ScrollArea>
+  );
+}
 
 export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
@@ -82,7 +235,11 @@ export default function Dashboard() {
   const [isPnmImportOpen, setIsPnmImportOpen] = useState(false);
   const [isActiveImportOpen, setIsActiveImportOpen] = useState(false);
   const [isBumpChainsOpen, setIsBumpChainsOpen] = useState(false);
-  const [activeView, setActiveView] = useState<'planner' | 'summary'>('planner');
+  const [activeView, setActiveView] = useState<'planner' | 'summary' | 'reviews'>('planner');
+  const [reviews, setReviews] = useState<PnmReview[]>([]);
+  const [expandedPnmId, setExpandedPnmId] = useState<string | null>(null);
+  const [reviewDraft, setReviewDraft] = useState<Record<string, { stars: number; note: string }>>({});
+  const [savingReviewId, setSavingReviewId] = useState<string | null>(null);
   const [isSnapshotsOpen, setIsSnapshotsOpen] = useState(false);
   const [snapshotLabel, setSnapshotLabel] = useState("");
   const [snapshotList, setSnapshotList] = useState<SnapshotMeta[]>([]);
@@ -133,11 +290,16 @@ export default function Dashboard() {
       })
       .finally(() => {
         setIsLoading(false);
-        // Defer initialization flag to the next tick so that all the state
-        // updates from the load (setRounds, setActives, etc.) have been
-        // processed and re-rendered before autosave starts watching.
         setTimeout(() => { isInitializedRef.current = true; }, 0);
       });
+  }, []);
+
+  // Load reviews on mount
+  useEffect(() => {
+    fetch("/api/reviews")
+      .then(r => r.json())
+      .then((data: PnmReview[]) => { if (Array.isArray(data)) setReviews(data); })
+      .catch(() => {});
   }, []);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -1524,9 +1686,10 @@ export default function Dashboard() {
               <div className="flex border-b border-slate-200/80 shrink-0 bg-white/95 px-1">
                 <button onClick={() => setActiveView('planner')} className={`px-4 py-2.5 text-[11px] font-semibold border-b-2 transition-colors ${activeView === 'planner' ? 'border-violet-500 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`} data-testid="tab-planner">Planner</button>
                 <button onClick={() => setActiveView('summary')} className={`px-4 py-2.5 text-[11px] font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${activeView === 'summary' ? 'border-violet-500 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`} data-testid="tab-active-summary"><BarChart2 className="w-3 h-3" />Active Summary</button>
+                <button onClick={() => setActiveView('reviews')} className={`px-4 py-2.5 text-[11px] font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${activeView === 'reviews' ? 'border-violet-500 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`} data-testid="tab-reviews"><Star className="w-3 h-3" />Reviews</button>
               </div>
 
-              {activeView === 'planner' ? (<>
+              {activeView === 'planner' && (<>
               <div className="px-3 py-2.5 border-b border-slate-200/80 flex items-center justify-between gap-3 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,250,252,0.86))] shrink-0">
                 <div className="flex items-center gap-2.5 flex-1 flex-wrap">
                   <div className="h-8 w-8 border border-slate-200 bg-white flex items-center justify-center shadow-sm shrink-0">
@@ -1645,7 +1808,8 @@ export default function Dashboard() {
                   </TableBody>
                 </Table>
               </ScrollArea>
-              </>) : (
+              </>)}
+              {activeView === 'summary' && (
                 /* ── Active Summary Tab ── */
                 <ScrollArea className="flex-1">
                   <Table className="rounded-none">
@@ -1686,6 +1850,20 @@ export default function Dashboard() {
                     </TableBody>
                   </Table>
                 </ScrollArea>
+              )}
+              {activeView === 'reviews' && (
+                <ReviewsTab
+                  rounds={rounds}
+                  actives={actives}
+                  reviews={reviews}
+                  setReviews={setReviews}
+                  expandedPnmId={expandedPnmId}
+                  setExpandedPnmId={setExpandedPnmId}
+                  reviewDraft={reviewDraft}
+                  setReviewDraft={setReviewDraft}
+                  savingReviewId={savingReviewId}
+                  setSavingReviewId={setSavingReviewId}
+                />
               )}
             </div>
           </ResizablePanel>

@@ -9,6 +9,9 @@ import {
   getSnapshots,
   restoreSnapshot,
   deleteSnapshot,
+  getAllReviews,
+  upsertReview,
+  deleteReview,
   type FullState,
 } from "./storage";
 
@@ -138,6 +141,54 @@ export async function registerRoutes(
     } catch (err) {
       console.error("DELETE /api/snapshots/:id error:", err);
       res.status(500).json({ error: "Failed to delete snapshot" });
+    }
+  });
+
+  // GET /api/reviews
+  // Load all reviews.
+  app.get("/api/reviews", async (_req: Request, res: Response) => {
+    try {
+      const reviews = await getAllReviews();
+      res.json(reviews);
+    } catch (err) {
+      console.error("GET /api/reviews error:", err);
+      res.status(500).json({ error: "Failed to load reviews" });
+    }
+  });
+
+  // PUT /api/reviews/:id
+  // Upsert a review for a (pnmId, activeId) pair.
+  const reviewBodySchema = z.object({
+    pnmId: z.string(),
+    activeId: z.string(),
+    activeName: z.string(),
+    pnmName: z.string(),
+    stars: z.number().int().min(1).max(5),
+    note: z.string().default(""),
+  });
+  app.put("/api/reviews/:id", async (req: Request, res: Response) => {
+    const parsed = reviewBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid review body", details: parsed.error.flatten() });
+      return;
+    }
+    try {
+      const review = await upsertReview({ id: String(req.params.id), ...parsed.data });
+      res.json(review);
+    } catch (err) {
+      console.error("PUT /api/reviews/:id error:", err);
+      res.status(500).json({ error: "Failed to save review" });
+    }
+  });
+
+  // DELETE /api/reviews/:id
+  app.delete("/api/reviews/:id", async (req: Request, res: Response) => {
+    try {
+      await deleteReview(String(req.params.id));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("DELETE /api/reviews/:id error:", err);
+      res.status(500).json({ error: "Failed to delete review" });
     }
   });
 

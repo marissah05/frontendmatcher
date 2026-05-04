@@ -1,8 +1,8 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
-  rounds, actives, pnms, snapshots,
-  type Round, type Active, type Pnm, type Snapshot,
+  rounds, actives, pnms, snapshots, pnmReviews,
+  type Round, type Active, type Pnm, type Snapshot, type PnmReview,
 } from "@shared/schema";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
@@ -171,4 +171,47 @@ export async function restoreSnapshot(id: string): Promise<FullState | null> {
 
 export async function deleteSnapshot(id: string): Promise<void> {
   await db.delete(snapshots).where(eq(snapshots.id, id));
+}
+
+// ── getReviewsForPnm ──────────────────────────────────────────────────────────
+export async function getReviewsForPnm(pnmId: string): Promise<PnmReview[]> {
+  return db.select().from(pnmReviews).where(eq(pnmReviews.pnmId, pnmId));
+}
+
+// ── getAllReviews ─────────────────────────────────────────────────────────────
+export async function getAllReviews(): Promise<PnmReview[]> {
+  return db.select().from(pnmReviews);
+}
+
+// ── upsertReview ──────────────────────────────────────────────────────────────
+// Creates or updates a review for a given (pnmId, activeId) pair.
+export async function upsertReview(data: {
+  id: string;
+  pnmId: string;
+  activeId: string;
+  activeName: string;
+  pnmName: string;
+  stars: number;
+  note: string;
+}): Promise<PnmReview> {
+  const [row] = await db
+    .insert(pnmReviews)
+    .values({ ...data, stars: data.stars as unknown as number & { __brand: "smallint" } })
+    .onConflictDoUpdate({
+      target: pnmReviews.id,
+      set: {
+        stars: sql`excluded.stars`,
+        note: sql`excluded.note`,
+        activeName: sql`excluded.active_name`,
+        pnmName: sql`excluded.pnm_name`,
+        updatedAt: sql`now()`,
+      },
+    })
+    .returning();
+  return row;
+}
+
+// ── deleteReview ──────────────────────────────────────────────────────────────
+export async function deleteReview(id: string): Promise<void> {
+  await db.delete(pnmReviews).where(eq(pnmReviews.id, id));
 }

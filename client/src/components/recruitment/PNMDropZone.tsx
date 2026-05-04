@@ -14,6 +14,7 @@ interface PNMDropZoneProps {
     alreadyUsedInSlot: boolean;
     chainCount: number;
     isOverLimit: boolean;
+    wouldCycle: boolean;
   };
 }
 
@@ -51,27 +52,32 @@ export default function PNMDropZone({ pnm, slot, matchedActiveName, onUnmatch, i
     );
   }
 
+  const blocked = isOver && (dropPreview?.wouldCycle || dropPreview?.alreadyUsedInSlot);
+
   return (
     <div
       ref={setNodeRef}
       className={cn(
         "h-6 border-2 border-dashed flex items-center justify-center text-[10px] px-2 transition-colors min-w-[100px] rounded-none",
-        isOver && dropPreview?.alreadyUsedInSlot && "border-red-400 bg-red-50 text-red-700",
-        isOver && !dropPreview?.alreadyUsedInSlot && dropPreview?.isOverLimit && "border-amber-400 bg-amber-50 text-amber-700",
-        isOver && !dropPreview?.alreadyUsedInSlot && !dropPreview?.isOverLimit && "bg-primary/5 border-primary text-primary",
+        isOver && dropPreview?.wouldCycle && "border-orange-500 bg-orange-50 text-orange-700",
+        isOver && !dropPreview?.wouldCycle && dropPreview?.alreadyUsedInSlot && "border-red-400 bg-red-50 text-red-700",
+        isOver && !blocked && dropPreview?.isOverLimit && "border-amber-400 bg-amber-50 text-amber-700",
+        isOver && !blocked && !dropPreview?.isOverLimit && "bg-primary/5 border-primary text-primary",
         !isOver && "text-muted-foreground/50 italic border-border/60 hover:border-border",
         isHighlighted && !isOver && "border-slate-400 text-slate-700",
         isDimmed && !isOver && "opacity-40"
       )}
       data-testid={`dropzone-slot-${slot}-${pnm.id}`}
     >
-      {isOver && dropPreview?.alreadyUsedInSlot
-        ? `Used in Bump ${slot}`
-        : isOver && dropPreview?.isOverLimit
-          ? `Chain ${dropPreview.chainCount}`
-          : isOver
-            ? "Release"
-            : `Slot ${slot}`}
+      {isOver && dropPreview?.wouldCycle
+        ? "Cycle!"
+        : isOver && dropPreview?.alreadyUsedInSlot
+          ? `Used in Bump ${slot}`
+          : isOver && dropPreview?.isOverLimit
+            ? `Chain ${dropPreview.chainCount}`
+            : isOver
+              ? "Release"
+              : `Slot ${slot}`}
     </div>
   );
 }

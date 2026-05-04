@@ -24,11 +24,13 @@ interface SortablePNMRowProps {
     alreadyUsedInSlot: boolean;
     chainCount: number;
     isOverLimit: boolean;
+    wouldCycle: boolean;
   };
   dropPreview2?: {
     alreadyUsedInSlot: boolean;
     chainCount: number;
     isOverLimit: boolean;
+    wouldCycle: boolean;
   };
   highlightedActiveIds: Set<string>;
 }

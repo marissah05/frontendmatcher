@@ -651,7 +651,7 @@ export default function Dashboard() {
   const hasLinkedHighlight = isLinkedHoverEnabled && highlightedActiveIds.size > 0;
 
   const dropWarnings = useMemo(() => {
-    const warnings = new Map<string, { alreadyUsedInSlot: boolean; chainCount: number; isOverLimit: boolean }>();
+    const warnings = new Map<string, { alreadyUsedInSlot: boolean; chainCount: number; isOverLimit: boolean; wouldCycle: boolean }>();
 
     if (draggingType !== 'active' || !draggingId) {
       return warnings;
@@ -682,11 +682,13 @@ export default function Dashboard() {
           .map(activeId => analysis.activeToChain.get(activeId))
           .filter((chain): chain is ChainInfo => Boolean(chain));
         const chainCount = relatedChains.length ? Math.max(...relatedChains.map(chain => chain.count)) : 1;
+        const wouldCycle = relatedChains.some(chain => chain.isCycle);
 
         warnings.set(`${pnm.id}-${slot}`, {
           alreadyUsedInSlot: activeRound.pnms.some(otherPnm => otherPnm.id !== pnm.id && otherPnm[slotKey] === draggedActiveId),
           chainCount,
           isOverLimit: chainCount > chainLengthLimit,
+          wouldCycle,
         });
       });
     });
@@ -1044,6 +1046,15 @@ export default function Dashboard() {
       }
 
       const projectedDrop = dropWarnings.get(`${overData.pnm.id}-${overData.slot}`);
+
+      if (projectedDrop?.wouldCycle) {
+        toast.error("This assignment would create a cycle — no free active could start the chain.", {
+          className: "rounded-none text-xs font-bold",
+          duration: 4000
+        });
+        return;
+      }
+
       pushUndoState();
 
       setRounds(prev => prev.map(r => {

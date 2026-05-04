@@ -1173,9 +1173,10 @@ export default function Dashboard() {
     const maxRows = Math.max(pnmRows.length, chains.length);
     for (let i = 0; i < maxRows; i++) {
       const row = pnmRows[i] || ["", "", "", ""];
-      const starterName = chains[i] ? escapeCSV(chains[i].starterName) : "";
-      const chainStr = chains[i] ? escapeCSV(chains[i].handoffDisplay) : "";
-      finalRows.push([...row, "", starterName, chainStr]);
+      const fullChain = chains[i]
+        ? escapeCSV(`${chains[i].starterName} -> ${chains[i].handoffDisplay}`)
+        : "";
+      finalRows.push([...row, "", fullChain]);
     }
 
     const unusedBump1Actives = actives
@@ -1208,7 +1209,7 @@ export default function Dashboard() {
 
     const csvContent = [
       ["--- MATCHUPS ---"],
-      ["ID Number", "PNM Name", "Match 1", "Match 2", "", "First Switch", "Then Goes To"],
+      ["ID Number", "PNM Name", "Match 1", "Match 2", "", "Bump Chain"],
       ...finalRows,
       [""],
       ["--- UNUSED ACTIVES ---"],

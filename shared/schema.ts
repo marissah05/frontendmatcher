@@ -8,6 +8,8 @@ export const rounds = pgTable("rounds", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
+  dayId: text("day_id").notNull().default("sisterhood"),
+  dayName: text("day_name").notNull().default("Sisterhood Day"),
 });
 
 export const insertRoundSchema = createInsertSchema(rounds);

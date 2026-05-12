@@ -32,9 +32,16 @@ const roundStateSchema = z.object({
   pnms: z.array(pnmStateSchema),
 });
 
-const fullStateSchema = z.object({
+const dayStateSchema = z.object({
+  id: z.string(),
+  name: z.string(),
   rounds: z.array(roundStateSchema),
+});
+
+const fullStateSchema = z.object({
+  days: z.array(dayStateSchema),
   actives: z.array(z.object({ id: z.string(), name: z.string() })),
+  activeDayId: z.string().optional().default("sisterhood"),
   activeRoundId: z.string(),
   chainLengthLimit: z.number().int(),
 });

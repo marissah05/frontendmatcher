@@ -22,16 +22,23 @@ export interface RoundState {
   pnms: PnmState[];
 }
 
-export interface FullState {
+export interface DayState {
+  id: string;
+  name: string;
   rounds: RoundState[];
+}
+
+export interface FullState {
+  days: DayState[];
   actives: { id: string; name: string }[];
+  activeDayId: string;
   activeRoundId: string;
   chainLengthLimit: number;
 }
 
+const DAY_ORDER = ["sisterhood", "philanthropy", "preference"];
+
 // ── getFullState ──────────────────────────────────────────────────────────────
-// Loads all rounds, their PNMs, and the actives pool from the database.
-// Returns null when the database is empty (first launch).
 
 export async function getFullState(): Promise<FullState | null> {
   const [allRounds, allActives, allPnms] = await Promise.all([
@@ -41,74 +48,93 @@ export async function getFullState(): Promise<FullState | null> {
   ]);
 
   if (allRounds.length === 0 && allActives.length === 0) {
-    return null; // nothing saved yet
+    return null;
   }
 
-  const roundStates: RoundState[] = allRounds.map((r) => ({
-    id: r.id,
-    name: r.name,
-    sortOrder: r.sortOrder,
-    pnms: allPnms
-      .filter((p) => p.roundId === r.id)
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        idNumber: p.idNumber,
-        matchedWith: p.matchedWith ?? undefined,
-        secondMatch: p.secondMatch ?? undefined,
-      })),
+  // Group rounds by day
+  const dayMap = new Map<string, { name: string; rounds: RoundState[] }>();
+  for (const r of allRounds) {
+    if (!dayMap.has(r.dayId)) {
+      dayMap.set(r.dayId, { name: r.dayName, rounds: [] });
+    }
+    dayMap.get(r.dayId)!.rounds.push({
+      id: r.id,
+      name: r.name,
+      sortOrder: r.sortOrder,
+      pnms: allPnms
+        .filter((p) => p.roundId === r.id)
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          idNumber: p.idNumber,
+          matchedWith: p.matchedWith ?? undefined,
+          secondMatch: p.secondMatch ?? undefined,
+        })),
+    });
+  }
+
+  // Build days in canonical order, filling in empty days
+  const DAY_NAMES: Record<string, string> = {
+    sisterhood: "Sisterhood Day",
+    philanthropy: "Philanthropy Day",
+    preference: "Preference Day",
+  };
+  const days: DayState[] = DAY_ORDER.map((dayId) => ({
+    id: dayId,
+    name: dayMap.get(dayId)?.name ?? DAY_NAMES[dayId] ?? dayId,
+    rounds: dayMap.get(dayId)?.rounds ?? [],
   }));
 
+  const firstRoundId = allRounds[0]?.id ?? "";
+  const firstDayId = allRounds[0]?.dayId ?? "sisterhood";
+
   return {
-    rounds: roundStates,
+    days,
     actives: allActives.map((a) => ({ id: a.id, name: a.name })),
-    activeRoundId: allRounds[0]?.id ?? "",
+    activeDayId: firstDayId,
+    activeRoundId: firstRoundId,
     chainLengthLimit: 6,
   };
 }
 
 // ── saveFullState ─────────────────────────────────────────────────────────────
-// Replaces ALL data in the database with the provided state.
-// Runs inside a transaction so it's all-or-nothing.
-// Order matters: actives → rounds → pnms (FK round_id must exist first).
 
 export async function saveFullState(state: FullState): Promise<void> {
   await db.transaction(async (tx) => {
-    // 0. Acquire advisory lock so only one save transaction runs at a time.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(1)`);
-
-    // 1. Wipe existing data atomically — TRUNCATE + CASCADE handles FK order
-    //    automatically and is guaranteed to leave no rows behind.
     await tx.execute(sql`TRUNCATE TABLE pnms, rounds, actives RESTART IDENTITY CASCADE`);
 
-    // 2. Insert actives
     if (state.actives.length > 0) {
       await tx.insert(actives).values(
         state.actives.map((a) => ({ id: a.id, name: a.name }))
       );
     }
 
-    // 3. Insert rounds
-    if (state.rounds.length > 0) {
-      await tx.insert(rounds).values(
-        state.rounds.map((r) => ({
-          id: r.id,
-          name: r.name,
-          sortOrder: r.sortOrder,
-        }))
-      );
+    const allRounds = state.days.flatMap((day) =>
+      day.rounds.map((r) => ({
+        id: r.id,
+        name: r.name,
+        sortOrder: r.sortOrder,
+        dayId: day.id,
+        dayName: day.name,
+      }))
+    );
+
+    if (allRounds.length > 0) {
+      await tx.insert(rounds).values(allRounds);
     }
 
-    // 4. Insert all PNMs (round_id already exists at this point)
-    const allPnms = state.rounds.flatMap((r) =>
-      r.pnms.map((p) => ({
-        id: p.id,
-        name: p.name,
-        idNumber: p.idNumber,
-        roundId: r.id,
-        matchedWith: p.matchedWith ?? null,
-        secondMatch: p.secondMatch ?? null,
-      }))
+    const allPnms = state.days.flatMap((day) =>
+      day.rounds.flatMap((r) =>
+        r.pnms.map((p) => ({
+          id: p.id,
+          name: p.name,
+          idNumber: p.idNumber,
+          roundId: r.id,
+          matchedWith: p.matchedWith ?? null,
+          secondMatch: p.secondMatch ?? null,
+        }))
+      )
     );
 
     const seen = new Set<string>();
@@ -128,9 +154,8 @@ export async function saveFullState(state: FullState): Promise<void> {
 }
 
 // ── createSnapshot ────────────────────────────────────────────────────────────
-// Saves the current full state as a named snapshot for later restore.
 
-export async function createSnapshot(id: string, label: string, payload: FullState): Promise<Snapshot> {
+export async function createSnapshot(id: string, label: string, payload: object): Promise<Snapshot> {
   const [snapshot] = await db
     .insert(snapshots)
     .values({ id, label, payload })
@@ -139,8 +164,6 @@ export async function createSnapshot(id: string, label: string, payload: FullSta
 }
 
 // ── getSnapshots ──────────────────────────────────────────────────────────────
-// Lists all snapshots ordered newest-first. Payload is NOT included (too large
-// for a list view — only fetch it when actually restoring).
 
 export async function getSnapshots(): Promise<Omit<Snapshot, "payload">[]> {
   const rows = await db
@@ -155,19 +178,16 @@ export async function getSnapshots(): Promise<Omit<Snapshot, "payload">[]> {
 }
 
 // ── restoreSnapshot ───────────────────────────────────────────────────────────
-// Returns the full payload of a snapshot so the frontend can load it.
-// Returns null if the snapshot doesn't exist.
 
-export async function restoreSnapshot(id: string): Promise<FullState | null> {
+export async function restoreSnapshot(id: string): Promise<object | null> {
   const [row] = await db
     .select({ payload: snapshots.payload })
     .from(snapshots)
     .where(eq(snapshots.id, id));
-  return row ? (row.payload as FullState) : null;
+  return row ? row.payload : null;
 }
 
 // ── deleteSnapshot ────────────────────────────────────────────────────────────
-// Permanently deletes a snapshot by ID.
 
 export async function deleteSnapshot(id: string): Promise<void> {
   await db.delete(snapshots).where(eq(snapshots.id, id));
@@ -184,7 +204,6 @@ export async function getAllReviews(): Promise<PnmReview[]> {
 }
 
 // ── upsertReview ──────────────────────────────────────────────────────────────
-// Creates or updates a review for a given (pnmId, activeId) pair.
 export async function upsertReview(data: {
   id: string;
   pnmId: string;

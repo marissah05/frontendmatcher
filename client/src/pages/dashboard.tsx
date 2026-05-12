@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { 
   DndContext, 
   DragOverlay, 
@@ -74,9 +74,19 @@ interface PnmReview {
   updatedAt: string;
 }
 
-const INITIAL_ROUNDS: RoundData[] = [
-  { id: "r1", name: "Round 1", sortOrder: 0, pnms: MOCK_PNMS },
-  { id: "r2", name: "Round 2", sortOrder: 1, pnms: MOCK_PNMS.slice(0, 2) },
+interface DayData {
+  id: string;
+  name: string;
+  rounds: RoundData[];
+}
+
+const INITIAL_DAYS: DayData[] = [
+  { id: "sisterhood", name: "Sisterhood Day", rounds: [
+    { id: "r1", name: "Round 1", sortOrder: 0, pnms: MOCK_PNMS },
+    { id: "r2", name: "Round 2", sortOrder: 1, pnms: MOCK_PNMS.slice(0, 2) },
+  ]},
+  { id: "philanthropy", name: "Philanthropy Day", rounds: [] },
+  { id: "preference", name: "Preference Day", rounds: [] },
 ];
 
 // ── ReviewsTab component ───────────────────────────────────────────────────────
@@ -319,7 +329,8 @@ function ReviewsTab({
 export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [rounds, setRounds] = useState<RoundData[]>(INITIAL_ROUNDS);
+  const [days, setDays] = useState<DayData[]>(INITIAL_DAYS);
+  const [activeDayId, setActiveDayId] = useState("sisterhood");
   const [activeRoundId, setActiveRoundId] = useState("r1");
   const [actives, setActives] = useState<Active[]>(MOCK_ACTIVES);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -350,6 +361,29 @@ export default function Dashboard() {
   const [hoveredPnmId, setHoveredPnmId] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<PlannerSnapshot[]>([]);
 
+  const rounds = useMemo(() => days.find(d => d.id === activeDayId)?.rounds ?? [], [days, activeDayId]);
+
+  const setRounds = useCallback((updater: RoundData[] | ((prev: RoundData[]) => RoundData[])) => {
+    setDays(prev => prev.map(d => {
+      if (d.id !== activeDayId) return d;
+      const newRounds = typeof updater === 'function' ? updater(d.rounds) : updater;
+      return { ...d, rounds: newRounds };
+    }));
+  }, [activeDayId]);
+
+  const handleSwitchDay = (dayId: string) => {
+    const day = days.find(d => d.id === dayId)!;
+    if (day.rounds.length === 0) {
+      const newRound: RoundData = { id: `${dayId}-r1`, name: "Round 1", sortOrder: 0, pnms: [] };
+      setDays(prev => prev.map(d => d.id === dayId ? { ...d, rounds: [newRound] } : d));
+      setActiveDayId(dayId);
+      setActiveRoundId(newRound.id);
+    } else {
+      setActiveDayId(dayId);
+      setActiveRoundId(day.rounds[0].id);
+    }
+  };
+
   const pool1Ref = useRef<HTMLDivElement>(null);
   const roundNameUndoCapturedRef = useRef(false);
   const pool2Ref = useRef<HTMLDivElement>(null);
@@ -363,26 +397,42 @@ export default function Dashboard() {
     fetch("/api/state")
       .then(res => res.json())
       .then(data => {
-        if (data && data.rounds) {
-          const loadedRounds: RoundData[] = data.rounds.map((r: any) => ({
-            id: r.id,
-            name: r.name,
-            sortOrder: r.sortOrder,
-            pnms: r.pnms.map((p: any) => ({
-              id: p.id,
-              name: p.name,
-              idNumber: p.idNumber,
-              matchedWith: p.matchedWith ?? undefined,
-              secondMatch: p.secondMatch ?? undefined,
-              status: (p.matchedWith || p.secondMatch) ? 'matched' : 'unmatched',
-            } as PNM)),
+        if (!data) return; // first launch → keep mock data
+        const parseRounds = (rawRounds: any[]): RoundData[] => (rawRounds ?? []).map((r: any) => ({
+          id: r.id,
+          name: r.name,
+          sortOrder: r.sortOrder,
+          pnms: (r.pnms ?? []).map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            idNumber: p.idNumber,
+            matchedWith: p.matchedWith ?? undefined,
+            secondMatch: p.secondMatch ?? undefined,
+            status: (p.matchedWith || p.secondMatch) ? 'matched' : 'unmatched',
+          } as PNM)),
+        }));
+        if (data.days) {
+          // New multi-day format
+          const loadedDays: DayData[] = data.days.map((d: any) => ({
+            id: d.id,
+            name: d.name,
+            rounds: parseRounds(d.rounds ?? []),
           }));
-          setRounds(loadedRounds);
+          setDays(loadedDays);
           setActives(data.actives ?? []);
-          setActiveRoundId(loadedRounds[0]?.id ?? "");
+          const loadedDayId = data.activeDayId ?? "sisterhood";
+          setActiveDayId(loadedDayId);
+          const activeDay = loadedDays.find(d => d.id === loadedDayId);
+          setActiveRoundId(data.activeRoundId ?? activeDay?.rounds[0]?.id ?? "");
+          if (data.chainLengthLimit) setChainLengthLimit(data.chainLengthLimit);
+        } else if (data.rounds) {
+          // Legacy single-day format → migrate into Sisterhood Day
+          const loadedRounds = parseRounds(data.rounds);
+          setDays(prev => prev.map(d => d.id === "sisterhood" ? { ...d, rounds: loadedRounds } : d));
+          setActives(data.actives ?? []);
+          setActiveRoundId(data.activeRoundId ?? loadedRounds[0]?.id ?? "");
           if (data.chainLengthLimit) setChainLengthLimit(data.chainLengthLimit);
         }
-        // data === null means first launch → keep INITIAL_ROUNDS mock data
       })
       .catch(() => {
         // Network error or server down → keep mock data, show nothing to user
@@ -413,20 +463,22 @@ export default function Dashboard() {
 
     autosaveTimerRef.current = setTimeout(async () => {
       try {
-        const body = {
-          rounds: rounds.map((r, i) => ({
-            id: r.id,
-            name: r.name,
-            sortOrder: r.sortOrder ?? i,
-            pnms: r.pnms.map(p => ({
-              id: p.id,
-              name: p.name,
-              idNumber: p.idNumber,
-              matchedWith: p.matchedWith ?? null,
-              secondMatch: p.secondMatch ?? null,
-            })),
+        const serializeRounds = (rs: RoundData[]) => rs.map((r, i) => ({
+          id: r.id,
+          name: r.name,
+          sortOrder: r.sortOrder ?? i,
+          pnms: r.pnms.map(p => ({
+            id: p.id,
+            name: p.name,
+            idNumber: p.idNumber,
+            matchedWith: p.matchedWith ?? null,
+            secondMatch: p.secondMatch ?? null,
           })),
+        }));
+        const body = {
+          days: days.map(d => ({ id: d.id, name: d.name, rounds: serializeRounds(d.rounds) })),
           actives: actives.map(a => ({ id: a.id, name: a.name })),
+          activeDayId,
           activeRoundId,
           chainLengthLimit,
         };
@@ -443,7 +495,7 @@ export default function Dashboard() {
     return () => {
       if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     };
-  }, [rounds, actives, activeRoundId, chainLengthLimit]);
+  }, [days, actives, activeDayId, activeRoundId, chainLengthLimit]);
 
   const activeRound = useMemo(() => rounds.find(r => r.id === activeRoundId)!, [rounds, activeRoundId]);
 
@@ -1331,7 +1383,7 @@ export default function Dashboard() {
     setIsSavingSnapshot(true);
     try {
       const payload = {
-        rounds: rounds.map((r, i) => ({
+        rounds: rounds.map((r, i) => ({   // snapshot saves current day's rounds
           id: r.id,
           name: r.name,
           sortOrder: r.sortOrder ?? i,
@@ -1487,8 +1539,54 @@ export default function Dashboard() {
     );
   }
 
+  const DAY_COLORS: Record<string, { active: string; inactive: string; dot: string }> = {
+    sisterhood:   { active: "bg-violet-600 text-white border-violet-600",        inactive: "text-slate-500 border-transparent hover:bg-violet-50 hover:text-violet-700", dot: "bg-violet-400" },
+    philanthropy: { active: "bg-rose-500 text-white border-rose-500",            inactive: "text-slate-500 border-transparent hover:bg-rose-50 hover:text-rose-600",    dot: "bg-rose-400" },
+    preference:   { active: "bg-amber-500 text-white border-amber-500",          inactive: "text-slate-500 border-transparent hover:bg-amber-50 hover:text-amber-600",   dot: "bg-amber-400" },
+  };
+
   return (
     <div className="h-screen bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96)_38%,_rgba(241,245,249,1))] flex flex-col font-sans overflow-hidden text-[12px] text-slate-800">
+
+      {/* ── Day tab bar ── */}
+      <div className="shrink-0 flex items-stretch bg-slate-900 border-b border-slate-800 px-4 gap-1" style={{ minHeight: 36 }}>
+        <div className="flex items-center gap-1 mr-4">
+          <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">Recruitment Day</span>
+        </div>
+        {days.map((day, i) => {
+          const colors = DAY_COLORS[day.id] ?? DAY_COLORS.sisterhood;
+          const isActive = day.id === activeDayId;
+          const roundCount = day.rounds.length;
+          const matchedCount = day.rounds.reduce((sum, r) => sum + r.pnms.filter(p => p.matchedWith).length, 0);
+          const totalPnms = day.rounds.reduce((sum, r) => sum + r.pnms.length, 0);
+          return (
+            <button
+              key={day.id}
+              onClick={() => handleSwitchDay(day.id)}
+              data-testid={`tab-day-${day.id}`}
+              className={`relative flex items-center gap-2 px-4 h-full text-[11px] font-semibold border-b-2 transition-colors ${
+                isActive
+                  ? "text-white border-current " + (day.id === "sisterhood" ? "border-violet-400" : day.id === "philanthropy" ? "border-rose-400" : "border-amber-400") + " bg-white/10"
+                  : "text-slate-400 border-transparent hover:text-slate-200 hover:bg-white/5"
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full shrink-0 ${isActive ? colors.dot : "bg-slate-600"}`} />
+              <span>{day.name}</span>
+              {totalPnms > 0 && (
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm ${isActive ? "bg-white/20 text-white" : "bg-slate-700 text-slate-400"}`}>
+                  {matchedCount}/{totalPnms}
+                </span>
+              )}
+              {roundCount > 0 && (
+                <span className={`text-[9px] ${isActive ? "text-white/60" : "text-slate-600"}`}>
+                  {roundCount}r
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
       <header className="border-b border-slate-200/80 bg-white/90 px-4 py-2.5 flex items-center justify-between gap-4 shrink-0 backdrop-blur-xl shadow-[0_14px_28px_-24px_rgba(15,23,42,0.45)]">
         {/* LEFT: app name + round controls */}
         <div className="flex items-center gap-3 min-w-0 flex-wrap">

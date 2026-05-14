@@ -1575,23 +1575,25 @@ export default function Dashboard() {
   const saveState = async () => {
     setIsSaving(true);
     try {
-      // Build the body the API expects.
-      // PNMs stay nested inside their round — storage.ts flattens them server-side.
-      // Strip the frontend-only `status` field; derive round's sortOrder from its index.
       const body = {
-        rounds: rounds.map((r, i) => ({
-          id: r.id,
-          name: r.name,
-          sortOrder: r.sortOrder ?? i,
-          pnms: r.pnms.map(p => ({
-            id: p.id,
-            name: p.name,
-            idNumber: p.idNumber,
-            matchedWith: p.matchedWith ?? null,
-            secondMatch: p.secondMatch ?? null,
+        days: days.map(d => ({
+          id: d.id,
+          name: d.name,
+          rounds: d.rounds.map((r, i) => ({
+            id: r.id,
+            name: r.name,
+            sortOrder: r.sortOrder ?? i,
+            pnms: r.pnms.map(p => ({
+              id: p.id,
+              name: p.name,
+              idNumber: p.idNumber,
+              matchedWith: p.matchedWith ?? null,
+              secondMatch: p.secondMatch ?? null,
+            })),
           })),
         })),
         actives: actives.map(a => ({ id: a.id, name: a.name })),
+        activeDayId,
         activeRoundId,
         chainLengthLimit,
       };

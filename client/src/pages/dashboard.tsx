@@ -80,6 +80,112 @@ interface DayData {
   rounds: RoundData[];
 }
 
+// ── MasterSummaryView component ───────────────────────────────────────────────
+function MasterSummaryView({ days }: { days: DayData[] }) {
+  const DAY_THEME: Record<string, { border: string; bg: string; dot: string; text: string; bar: string }> = {
+    sisterhood:   { border: "border-violet-200", bg: "bg-violet-50/60", dot: "bg-violet-500", text: "text-violet-700", bar: "bg-violet-500" },
+    philanthropy: { border: "border-rose-200",   bg: "bg-rose-50/60",   dot: "bg-rose-500",   text: "text-rose-700",   bar: "bg-rose-500" },
+    preference:   { border: "border-amber-200",  bg: "bg-amber-50/60",  dot: "bg-amber-500",  text: "text-amber-700",  bar: "bg-amber-500" },
+  };
+
+  const totalRounds  = days.reduce((s, d) => s + d.rounds.length, 0);
+  const totalPnms    = days.reduce((s, d) => s + d.rounds.reduce((rs, r) => rs + r.pnms.length, 0), 0);
+  const totalMatched = days.reduce((s, d) => s + d.rounds.reduce((rs, r) => rs + r.pnms.filter(p => p.matchedWith && p.secondMatch).length, 0), 0);
+
+  return (
+    <div className="flex-1 overflow-auto bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96)_38%,_rgba(241,245,249,1))]">
+      <div className="max-w-3xl mx-auto px-6 py-6">
+        <div className="flex items-end justify-between mb-5">
+          <div>
+            <h2 className="text-[15px] font-bold text-slate-800 tracking-tight">Master Summary</h2>
+            <p className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-wider">All recruitment days — combined view</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-4 gap-3 mb-6">
+          {[
+            { label: "Days Active",     value: days.filter(d => d.rounds.length > 0).length },
+            { label: "Total Rounds",    value: totalRounds },
+            { label: "Total PNMs",      value: totalPnms },
+            { label: "Fully Matched",   value: totalPnms > 0 ? `${totalMatched} / ${totalPnms}` : "—" },
+          ].map(stat => (
+            <div key={stat.label} className="bg-white border border-slate-200 px-4 py-3 shadow-sm">
+              <div className="text-[22px] font-bold text-slate-800 leading-none">{stat.value}</div>
+              <div className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400 mt-1">{stat.label}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-4">
+          {days.map(day => {
+            const theme = DAY_THEME[day.id] ?? DAY_THEME.sisterhood;
+            const dayPnms    = day.rounds.reduce((s, r) => s + r.pnms.length, 0);
+            const dayMatched = day.rounds.reduce((s, r) => s + r.pnms.filter(p => p.matchedWith && p.secondMatch).length, 0);
+            const pct = dayPnms > 0 ? Math.round((dayMatched / dayPnms) * 100) : 0;
+
+            return (
+              <div key={day.id} className={`bg-white border ${theme.border} shadow-sm overflow-hidden`}>
+                <div className={`px-4 py-2.5 ${theme.bg} border-b ${theme.border} flex items-center justify-between`}>
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${theme.dot}`} />
+                    <span className={`text-[12px] font-bold ${theme.text}`}>{day.name}</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-[10px] text-slate-500">
+                    <span>{day.rounds.length} round{day.rounds.length !== 1 ? 's' : ''}</span>
+                    <span>{dayPnms} PNMs</span>
+                    <span className={`font-bold ${pct === 100 && dayPnms > 0 ? 'text-green-600' : theme.text}`}>{pct}% matched</span>
+                  </div>
+                </div>
+                {day.rounds.length === 0 ? (
+                  <div className="px-4 py-5 text-[11px] text-slate-300 text-center italic">No rounds added yet</div>
+                ) : (
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-slate-50/60">
+                        {["Round", "PNMs", "M1 Filled", "M2 Filled", "Fully Matched", "Progress"].map(h => (
+                          <th key={h} className="py-1.5 px-4 text-[9px] font-bold uppercase tracking-wider text-slate-400 text-left last:text-right">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {day.rounds.map(round => {
+                        const total = round.pnms.length;
+                        const m1    = round.pnms.filter(p => p.matchedWith).length;
+                        const m2    = round.pnms.filter(p => p.secondMatch).length;
+                        const both  = round.pnms.filter(p => p.matchedWith && p.secondMatch).length;
+                        const rPct  = total > 0 ? Math.round((both / total) * 100) : 0;
+                        return (
+                          <tr key={round.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/40 transition-colors">
+                            <td className="py-2 px-4 font-semibold text-slate-700">{round.name}</td>
+                            <td className="py-2 px-4 text-slate-500">{total}</td>
+                            <td className="py-2 px-4 text-slate-500">{m1}</td>
+                            <td className="py-2 px-4 text-slate-500">{m2}</td>
+                            <td className="py-2 px-4">
+                              <span className={`font-semibold ${both === total && total > 0 ? 'text-green-600' : 'text-slate-600'}`}>{both}</span>
+                            </td>
+                            <td className="py-2 px-4">
+                              <div className="flex items-center justify-end gap-2">
+                                <div className="w-14 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                  <div className={`h-full ${theme.bar} rounded-full transition-all`} style={{ width: `${rPct}%` }} />
+                                </div>
+                                <span className="text-[9px] text-slate-400 w-7 text-right">{rPct}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const INITIAL_DAYS: DayData[] = [
   { id: "sisterhood", name: "Sisterhood Day", rounds: [
     { id: "r1", name: "Round 1", sortOrder: 0, pnms: MOCK_PNMS },
@@ -360,6 +466,7 @@ export default function Dashboard() {
   const [hoveredActiveId, setHoveredActiveId] = useState<string | null>(null);
   const [hoveredPnmId, setHoveredPnmId] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<PlannerSnapshot[]>([]);
+  const [isMasterView, setIsMasterView] = useState(false);
 
   const rounds = useMemo(() => days.find(d => d.id === activeDayId)?.rounds ?? [], [days, activeDayId]);
 
@@ -372,6 +479,7 @@ export default function Dashboard() {
   }, [activeDayId]);
 
   const handleSwitchDay = (dayId: string) => {
+    setIsMasterView(false);
     const day = days.find(d => d.id === dayId)!;
     if (day.rounds.length === 0) {
       const newRound: RoundData = { id: `${dayId}-r1`, name: "Round 1", sortOrder: 0, pnms: [] };
@@ -1539,54 +1647,63 @@ export default function Dashboard() {
     );
   }
 
-  const DAY_COLORS: Record<string, { active: string; inactive: string; dot: string }> = {
-    sisterhood:   { active: "bg-violet-600 text-white border-violet-600",        inactive: "text-slate-500 border-transparent hover:bg-violet-50 hover:text-violet-700", dot: "bg-violet-400" },
-    philanthropy: { active: "bg-rose-500 text-white border-rose-500",            inactive: "text-slate-500 border-transparent hover:bg-rose-50 hover:text-rose-600",    dot: "bg-rose-400" },
-    preference:   { active: "bg-amber-500 text-white border-amber-500",          inactive: "text-slate-500 border-transparent hover:bg-amber-50 hover:text-amber-600",   dot: "bg-amber-400" },
+  const DAY_TAB_STYLE: Record<string, { dot: string; activeTop: string; activeText: string }> = {
+    sisterhood:   { dot: "bg-violet-500", activeTop: "shadow-[inset_0_3px_0_#7c3aed]", activeText: "text-violet-700" },
+    philanthropy: { dot: "bg-rose-500",   activeTop: "shadow-[inset_0_3px_0_#f43f5e]", activeText: "text-rose-700"   },
+    preference:   { dot: "bg-amber-500",  activeTop: "shadow-[inset_0_3px_0_#f59e0b]", activeText: "text-amber-700"  },
   };
 
   return (
     <div className="h-screen bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96)_38%,_rgba(241,245,249,1))] flex flex-col font-sans overflow-hidden text-[12px] text-slate-800">
 
       {/* ── Day tab bar ── */}
-      <div className="shrink-0 flex items-stretch bg-slate-900 border-b border-slate-800 px-4 gap-1" style={{ minHeight: 36 }}>
-        <div className="flex items-center gap-1 mr-4">
-          <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">Recruitment Day</span>
-        </div>
-        {days.map((day, i) => {
-          const colors = DAY_COLORS[day.id] ?? DAY_COLORS.sisterhood;
-          const isActive = day.id === activeDayId;
-          const roundCount = day.rounds.length;
-          const matchedCount = day.rounds.reduce((sum, r) => sum + r.pnms.filter(p => p.matchedWith).length, 0);
-          const totalPnms = day.rounds.reduce((sum, r) => sum + r.pnms.length, 0);
+      <div className="shrink-0 bg-slate-100 border-b border-slate-200 px-3 pt-1.5 flex items-end gap-0.5" style={{ zIndex: 30, position: 'relative' }}>
+        <span className="text-[8px] font-bold uppercase tracking-[0.2em] text-slate-400 mr-2 pb-2 shrink-0">Day</span>
+        {days.map(day => {
+          const style = DAY_TAB_STYLE[day.id] ?? DAY_TAB_STYLE.sisterhood;
+          const isActive = day.id === activeDayId && !isMasterView;
+          const totalPnms = day.rounds.reduce((s, r) => s + r.pnms.length, 0);
+          const matchedCount = day.rounds.reduce((s, r) => s + r.pnms.filter(p => p.matchedWith).length, 0);
           return (
             <button
               key={day.id}
               onClick={() => handleSwitchDay(day.id)}
               data-testid={`tab-day-${day.id}`}
-              className={`relative flex items-center gap-2 px-4 h-full text-[11px] font-semibold border-b-2 transition-colors ${
+              className={`-mb-px flex items-center gap-1.5 px-3.5 py-2 text-[11px] font-semibold rounded-t-md border transition-colors ${
                 isActive
-                  ? "text-white border-current " + (day.id === "sisterhood" ? "border-violet-400" : day.id === "philanthropy" ? "border-rose-400" : "border-amber-400") + " bg-white/10"
-                  : "text-slate-400 border-transparent hover:text-slate-200 hover:bg-white/5"
+                  ? `bg-white border-slate-200 border-b-white ${style.activeTop} ${style.activeText} z-10`
+                  : "bg-slate-50 border-slate-200/70 text-slate-500 hover:bg-white hover:text-slate-700"
               }`}
             >
-              <span className={`w-2 h-2 rounded-full shrink-0 ${isActive ? colors.dot : "bg-slate-600"}`} />
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? style.dot : "bg-slate-300"}`} />
               <span>{day.name}</span>
               {totalPnms > 0 && (
-                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm ${isActive ? "bg-white/20 text-white" : "bg-slate-700 text-slate-400"}`}>
+                <span className={`text-[9px] font-bold px-1 ${isActive ? "text-current opacity-60" : "text-slate-400"}`}>
                   {matchedCount}/{totalPnms}
-                </span>
-              )}
-              {roundCount > 0 && (
-                <span className={`text-[9px] ${isActive ? "text-white/60" : "text-slate-600"}`}>
-                  {roundCount}r
                 </span>
               )}
             </button>
           );
         })}
+        {/* Master Summary tab */}
+        <button
+          onClick={() => setIsMasterView(true)}
+          data-testid="tab-day-master"
+          className={`-mb-px ml-1 flex items-center gap-1.5 px-3.5 py-2 text-[11px] font-semibold rounded-t-md border transition-colors ${
+            isMasterView
+              ? "bg-white border-slate-200 border-b-white shadow-[inset_0_3px_0_#64748b] text-slate-700 z-10"
+              : "bg-slate-50 border-slate-200/70 text-slate-400 hover:bg-white hover:text-slate-600"
+          }`}
+        >
+          <BarChart2 className="w-3 h-3 shrink-0" />
+          Master Summary
+        </button>
       </div>
 
+      {isMasterView ? (
+        <MasterSummaryView days={days} />
+      ) : (
+      <>
       <header className="border-b border-slate-200/80 bg-white/90 px-4 py-2.5 flex items-center justify-between gap-4 shrink-0 backdrop-blur-xl shadow-[0_14px_28px_-24px_rgba(15,23,42,0.45)]">
         {/* LEFT: app name + round controls */}
         <div className="flex items-center gap-3 min-w-0 flex-wrap">
@@ -2385,6 +2502,8 @@ export default function Dashboard() {
           ) : null}
         </DragOverlay>
       </DndContext>
+      </>
+      )}
       <Toaster position="top-center" richColors />
     </div>
   );

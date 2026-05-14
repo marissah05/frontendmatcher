@@ -81,16 +81,19 @@ interface DayData {
 }
 
 // ── MasterSummaryView component ───────────────────────────────────────────────
-function MasterSummaryView({ days }: { days: DayData[] }) {
+function MasterSummaryView({ days, actives }: { days: DayData[]; actives: Active[] }) {
+  const activeIdSet = useMemo(() => new Set(actives.map(a => a.id)), [actives]);
   const DAY_THEME: Record<string, { border: string; bg: string; dot: string; text: string; bar: string }> = {
     sisterhood:   { border: "border-violet-200", bg: "bg-violet-50/60", dot: "bg-violet-500", text: "text-violet-700", bar: "bg-violet-500" },
     philanthropy: { border: "border-rose-200",   bg: "bg-rose-50/60",   dot: "bg-rose-500",   text: "text-rose-700",   bar: "bg-rose-500" },
     preference:   { border: "border-amber-200",  bg: "bg-amber-50/60",  dot: "bg-amber-500",  text: "text-amber-700",  bar: "bg-amber-500" },
   };
 
+  const isMatched = (id: string | undefined | null) => !!id && activeIdSet.has(id);
+
   const totalRounds  = days.reduce((s, d) => s + d.rounds.length, 0);
   const totalPnms    = days.reduce((s, d) => s + d.rounds.reduce((rs, r) => rs + r.pnms.length, 0), 0);
-  const totalMatched = days.reduce((s, d) => s + d.rounds.reduce((rs, r) => rs + r.pnms.filter(p => p.matchedWith).length, 0), 0);
+  const totalMatched = days.reduce((s, d) => s + d.rounds.reduce((rs, r) => rs + r.pnms.filter(p => isMatched(p.matchedWith)).length, 0), 0);
 
   return (
     <div className="flex-1 overflow-auto bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96)_38%,_rgba(241,245,249,1))]">
@@ -120,7 +123,7 @@ function MasterSummaryView({ days }: { days: DayData[] }) {
           {days.map(day => {
             const theme = DAY_THEME[day.id] ?? DAY_THEME.sisterhood;
             const dayPnms    = day.rounds.reduce((s, r) => s + r.pnms.length, 0);
-            const dayMatched = day.rounds.reduce((s, r) => s + r.pnms.filter(p => p.matchedWith).length, 0);
+            const dayMatched = day.rounds.reduce((s, r) => s + r.pnms.filter(p => isMatched(p.matchedWith)).length, 0);
             const pct = dayPnms > 0 ? Math.round((dayMatched / dayPnms) * 100) : 0;
 
             return (
@@ -150,8 +153,8 @@ function MasterSummaryView({ days }: { days: DayData[] }) {
                     <tbody>
                       {day.rounds.map(round => {
                         const total = round.pnms.length;
-                        const m1    = round.pnms.filter(p => p.matchedWith).length;
-                        const m2    = round.pnms.filter(p => p.secondMatch).length;
+                        const m1    = round.pnms.filter(p => isMatched(p.matchedWith)).length;
+                        const m2    = round.pnms.filter(p => isMatched(p.secondMatch)).length;
                         const rPct  = total > 0 ? Math.round((m1 / total) * 100) : 0;
                         return (
                           <tr key={round.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/40 transition-colors">
@@ -1702,7 +1705,7 @@ export default function Dashboard() {
       </div>
 
       {isMasterView ? (
-        <MasterSummaryView days={days} />
+        <MasterSummaryView days={days} actives={actives} />
       ) : (
       <>
       <header className="border-b border-slate-200/80 bg-white/90 px-4 py-2.5 flex items-center justify-between gap-4 shrink-0 backdrop-blur-xl shadow-[0_14px_28px_-24px_rgba(15,23,42,0.45)]">

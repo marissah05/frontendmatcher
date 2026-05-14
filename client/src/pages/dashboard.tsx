@@ -90,7 +90,7 @@ function MasterSummaryView({ days }: { days: DayData[] }) {
 
   const totalRounds  = days.reduce((s, d) => s + d.rounds.length, 0);
   const totalPnms    = days.reduce((s, d) => s + d.rounds.reduce((rs, r) => rs + r.pnms.length, 0), 0);
-  const totalMatched = days.reduce((s, d) => s + d.rounds.reduce((rs, r) => rs + r.pnms.filter(p => p.matchedWith && p.secondMatch).length, 0), 0);
+  const totalMatched = days.reduce((s, d) => s + d.rounds.reduce((rs, r) => rs + r.pnms.filter(p => p.matchedWith).length, 0), 0);
 
   return (
     <div className="flex-1 overflow-auto bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96)_38%,_rgba(241,245,249,1))]">
@@ -120,7 +120,7 @@ function MasterSummaryView({ days }: { days: DayData[] }) {
           {days.map(day => {
             const theme = DAY_THEME[day.id] ?? DAY_THEME.sisterhood;
             const dayPnms    = day.rounds.reduce((s, r) => s + r.pnms.length, 0);
-            const dayMatched = day.rounds.reduce((s, r) => s + r.pnms.filter(p => p.matchedWith && p.secondMatch).length, 0);
+            const dayMatched = day.rounds.reduce((s, r) => s + r.pnms.filter(p => p.matchedWith).length, 0);
             const pct = dayPnms > 0 ? Math.round((dayMatched / dayPnms) * 100) : 0;
 
             return (
@@ -152,8 +152,7 @@ function MasterSummaryView({ days }: { days: DayData[] }) {
                         const total = round.pnms.length;
                         const m1    = round.pnms.filter(p => p.matchedWith).length;
                         const m2    = round.pnms.filter(p => p.secondMatch).length;
-                        const both  = round.pnms.filter(p => p.matchedWith && p.secondMatch).length;
-                        const rPct  = total > 0 ? Math.round((both / total) * 100) : 0;
+                        const rPct  = total > 0 ? Math.round((m1 / total) * 100) : 0;
                         return (
                           <tr key={round.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/40 transition-colors">
                             <td className="py-2 px-4 font-semibold text-slate-700">{round.name}</td>
@@ -161,7 +160,7 @@ function MasterSummaryView({ days }: { days: DayData[] }) {
                             <td className="py-2 px-4 text-slate-500">{m1}</td>
                             <td className="py-2 px-4 text-slate-500">{m2}</td>
                             <td className="py-2 px-4">
-                              <span className={`font-semibold ${both === total && total > 0 ? 'text-green-600' : 'text-slate-600'}`}>{both}</span>
+                              <span className={`font-semibold ${m1 === total && total > 0 ? 'text-green-600' : 'text-slate-600'}`}>{m1}</span>
                             </td>
                             <td className="py-2 px-4">
                               <div className="flex items-center justify-end gap-2">

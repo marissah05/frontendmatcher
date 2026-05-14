@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback, Fragment } from "react";
 import { 
   DndContext, 
   DragOverlay, 
@@ -183,6 +183,129 @@ function MasterSummaryView({ days, actives }: { days: DayData[]; actives: Active
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ActiveRankListView component ──────────────────────────────────────────────
+function ActiveRankListView({ actives, reviews }: { actives: Active[]; reviews: PnmReview[] }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const ranked = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; reviews: PnmReview[] }>();
+    for (const a of actives) map.set(a.id, { id: a.id, name: a.name, reviews: [] });
+    for (const r of reviews) {
+      if (!map.has(r.activeId)) map.set(r.activeId, { id: r.activeId, name: r.activeName, reviews: [] });
+      map.get(r.activeId)!.reviews.push(r);
+    }
+    return Array.from(map.values())
+      .filter(a => a.reviews.length > 0)
+      .map(a => {
+        const total = a.reviews.reduce((s, r) => s + r.stars, 0);
+        const avg   = total / a.reviews.length;
+        return { ...a, total, avg, count: a.reviews.length };
+      })
+      .sort((a, b) => b.avg - a.avg || b.count - a.count);
+  }, [actives, reviews]);
+
+  const renderStars = (n: number, outOf = 5) => (
+    <span className="inline-flex gap-0.5">
+      {Array.from({ length: outOf }).map((_, i) => (
+        <span key={i} className={`text-[11px] ${i < Math.round(n) ? "text-amber-400" : "text-slate-200"}`}>★</span>
+      ))}
+    </span>
+  );
+
+  return (
+    <div className="flex-1 overflow-auto bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96)_38%,_rgba(241,245,249,1))]">
+      <div className="max-w-3xl mx-auto px-6 py-6">
+        <div className="mb-5">
+          <h2 className="text-[15px] font-bold text-slate-800 tracking-tight">Active Rank List</h2>
+          <p className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-wider">Ranked by average star rating from comments</p>
+        </div>
+
+        {ranked.length === 0 ? (
+          <div className="bg-white border border-slate-200 px-6 py-12 text-center shadow-sm">
+            <p className="text-[12px] font-semibold text-slate-400">No reviews yet</p>
+            <p className="text-[10px] text-slate-300 mt-1">Add star ratings in the Comments tab to populate rankings.</p>
+          </div>
+        ) : (
+          <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/70">
+                  <th className="py-2 px-4 text-left text-[9px] font-bold uppercase tracking-wider text-slate-400 w-10">#</th>
+                  <th className="py-2 px-4 text-left text-[9px] font-bold uppercase tracking-wider text-slate-400">Name</th>
+                  <th className="py-2 px-4 text-left text-[9px] font-bold uppercase tracking-wider text-slate-400">Score</th>
+                  <th className="py-2 px-4 text-center text-[9px] font-bold uppercase tracking-wider text-slate-400 w-20">Reviews</th>
+                  <th className="py-2 px-4 text-center text-[9px] font-bold uppercase tracking-wider text-slate-400 w-16">Total Pts</th>
+                  <th className="py-2 px-3 w-8" />
+                </tr>
+              </thead>
+              <tbody>
+                {ranked.map((entry, i) => {
+                  const isExpanded = expandedId === entry.id;
+                  return (
+                    <Fragment key={entry.id}>
+                      <tr
+                        className={`border-b border-slate-50 cursor-pointer transition-colors ${isExpanded ? "bg-violet-50/50" : "hover:bg-slate-50/50"}`}
+                        onClick={() => setExpandedId(isExpanded ? null : entry.id)}
+                        data-testid={`row-rank-${entry.id}`}
+                      >
+                        <td className="py-2.5 px-4">
+                          <span className={`text-[10px] font-bold ${i === 0 ? "text-amber-500" : i === 1 ? "text-slate-400" : i === 2 ? "text-amber-700" : "text-slate-300"}`}>
+                            {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 font-semibold text-slate-800">{entry.name}</td>
+                        <td className="py-2.5 px-4">
+                          <div className="flex items-center gap-2">
+                            {renderStars(entry.avg)}
+                            <span className="text-[10px] font-bold text-slate-600">{entry.avg.toFixed(2)}</span>
+                            <span className="text-[9px] text-slate-300">/ 5</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4 text-center text-slate-500">{entry.count}</td>
+                        <td className="py-2.5 px-4 text-center font-semibold text-slate-600">{entry.total}</td>
+                        <td className="py-2.5 px-3 text-center text-slate-300 text-[10px]">{isExpanded ? "▲" : "▼"}</td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="border-b border-slate-100 bg-violet-50/30">
+                          <td colSpan={6} className="px-6 py-3">
+                            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-2">Score Breakdown — {entry.count} review{entry.count !== 1 ? "s" : ""}</div>
+                            <div className="space-y-1.5">
+                              {entry.reviews
+                                .slice()
+                                .sort((a, b) => b.stars - a.stars)
+                                .map(r => (
+                                  <div key={r.id} className="flex items-start gap-3 py-1.5 px-3 bg-white border border-slate-100 rounded">
+                                    <div className="flex-1 min-w-0">
+                                      <span className="font-semibold text-slate-700 text-[11px]">{r.pnmName}</span>
+                                      {r.note && <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">{r.note}</p>}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      {renderStars(r.stars)}
+                                      <span className="text-[10px] font-bold text-slate-500">{r.stars}/5</span>
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                            <div className="mt-2 pt-2 border-t border-violet-100 flex items-center gap-4 text-[10px] text-slate-500">
+                              <span>Avg: <strong className="text-slate-700">{entry.avg.toFixed(2)}</strong></span>
+                              <span>Total pts: <strong className="text-slate-700">{entry.total}</strong></span>
+                              <span>Reviews: <strong className="text-slate-700">{entry.count}</strong></span>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -468,7 +591,7 @@ export default function Dashboard() {
   const [hoveredActiveId, setHoveredActiveId] = useState<string | null>(null);
   const [hoveredPnmId, setHoveredPnmId] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<PlannerSnapshot[]>([]);
-  const [isMasterView, setIsMasterView] = useState(false);
+  const [specialView, setSpecialView] = useState<null | "master" | "rank">(null);
 
   const rounds = useMemo(() => days.find(d => d.id === activeDayId)?.rounds ?? [], [days, activeDayId]);
 
@@ -481,7 +604,7 @@ export default function Dashboard() {
   }, [activeDayId]);
 
   const handleSwitchDay = (dayId: string) => {
-    setIsMasterView(false);
+    setSpecialView(null);
     const day = days.find(d => d.id === dayId)!;
     if (day.rounds.length === 0) {
       const newRound: RoundData = { id: `${dayId}-r1`, name: "Round 1", sortOrder: 0, pnms: [] };
@@ -1665,7 +1788,7 @@ export default function Dashboard() {
         <span className="text-[8px] font-bold uppercase tracking-[0.2em] text-slate-400 mr-2 pb-2 shrink-0">Day</span>
         {days.map(day => {
           const style = DAY_TAB_STYLE[day.id] ?? DAY_TAB_STYLE.sisterhood;
-          const isActive = day.id === activeDayId && !isMasterView;
+          const isActive = day.id === activeDayId && specialView === null;
           const totalPnms = day.rounds.reduce((s, r) => s + r.pnms.length, 0);
           const matchedCount = day.rounds.reduce((s, r) => s + r.pnms.filter(p => p.matchedWith).length, 0);
           return (
@@ -1689,23 +1812,38 @@ export default function Dashboard() {
             </button>
           );
         })}
-        {/* Master Summary tab */}
+        {/* Match Summary tab */}
         <button
-          onClick={() => setIsMasterView(true)}
+          onClick={() => setSpecialView("master")}
           data-testid="tab-day-master"
           className={`-mb-px ml-1 flex items-center gap-1.5 px-3.5 py-2 text-[11px] font-semibold rounded-t-md border transition-colors ${
-            isMasterView
+            specialView === "master"
               ? "bg-white border-slate-200 border-b-white shadow-[inset_0_3px_0_#64748b] text-slate-700 z-10"
               : "bg-slate-50 border-slate-200/70 text-slate-400 hover:bg-white hover:text-slate-600"
           }`}
         >
           <BarChart2 className="w-3 h-3 shrink-0" />
-          Master Summary
+          Match Summary
+        </button>
+        {/* Active Rank List tab */}
+        <button
+          onClick={() => setSpecialView("rank")}
+          data-testid="tab-day-rank"
+          className={`-mb-px flex items-center gap-1.5 px-3.5 py-2 text-[11px] font-semibold rounded-t-md border transition-colors ${
+            specialView === "rank"
+              ? "bg-white border-slate-200 border-b-white shadow-[inset_0_3px_0_#f59e0b] text-amber-700 z-10"
+              : "bg-slate-50 border-slate-200/70 text-slate-400 hover:bg-white hover:text-slate-600"
+          }`}
+        >
+          <Star className="w-3 h-3 shrink-0" />
+          Active Rank List
         </button>
       </div>
 
-      {isMasterView ? (
+      {specialView === "master" ? (
         <MasterSummaryView days={days} actives={actives} />
+      ) : specialView === "rank" ? (
+        <ActiveRankListView actives={actives} reviews={reviews} />
       ) : (
       <>
       <header className="border-b border-slate-200/80 bg-white/90 px-4 py-2.5 flex items-center justify-between gap-4 shrink-0 backdrop-blur-xl shadow-[0_14px_28px_-24px_rgba(15,23,42,0.45)]">

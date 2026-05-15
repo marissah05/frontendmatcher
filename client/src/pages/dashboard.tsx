@@ -189,9 +189,18 @@ function MasterSummaryView({ days, actives }: { days: DayData[]; actives: Active
 }
 
 // ── ActiveRankListView component ──────────────────────────────────────────────
-function ActiveRankListView({ actives, reviews }: { actives: Active[]; reviews: PnmReview[] }) {
+function ActiveRankListView({ actives, reviews, days }: { actives: Active[]; reviews: PnmReview[]; days: DayData[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [mode, setMode] = useState<"pnms" | "actives">("pnms");
+
+  const pnmIdNumberMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const day of (days ?? []))
+      for (const round of day.rounds)
+        for (const pnm of round.pnms)
+          if (!m.has(pnm.name)) m.set(pnm.name, pnm.idNumber);
+    return m;
+  }, [days]);
 
   const rankedActives = useMemo(() => {
     const map = new Map<string, { id: string; name: string; reviews: PnmReview[] }>();
@@ -235,10 +244,7 @@ function ActiveRankListView({ actives, reviews }: { actives: Active[]; reviews: 
     </span>
   );
 
-  const medal = (i: number) =>
-    i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`;
-  const medalColor = (i: number) =>
-    i === 0 ? "text-amber-500" : i === 1 ? "text-slate-400" : i === 2 ? "text-amber-700" : "text-slate-300";
+  const rankLabel = (i: number) => `#${i + 1}`;
 
   const expandBg   = mode === "pnms" ? "bg-rose-50/40"   : "bg-violet-50/50";
   const expandRow  = mode === "pnms" ? "bg-rose-50/30"   : "bg-violet-50/30";
@@ -306,8 +312,9 @@ function ActiveRankListView({ actives, reviews }: { actives: Active[]; reviews: 
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/70">
                   <th className="py-2 px-4 text-left text-[9px] font-bold uppercase tracking-wider text-slate-400 w-10">#</th>
+                  {mode === "pnms" && <th className="py-2 px-4 text-left text-[9px] font-bold uppercase tracking-wider text-slate-400 w-20">PNM No.</th>}
                   <th className="py-2 px-4 text-left text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                    {mode === "pnms" ? "PNM Name" : "Active Name"}
+                    {mode === "pnms" ? "Name" : "Active Name"}
                   </th>
                   <th className="py-2 px-4 text-left text-[9px] font-bold uppercase tracking-wider text-slate-400">Avg Score</th>
                   <th className="py-2 px-4 text-center text-[9px] font-bold uppercase tracking-wider text-slate-400 w-20">Reviews</th>
@@ -326,16 +333,14 @@ function ActiveRankListView({ actives, reviews }: { actives: Active[]; reviews: 
                         data-testid={`row-rank-${entry.id}`}
                       >
                         <td className="py-2.5 px-4">
-                          <span className={`text-[10px] font-bold ${medalColor(i)}`}>{medal(i)}</span>
+                          <span className="text-[10px] font-bold text-slate-400">{rankLabel(i)}</span>
                         </td>
-                        <td className="py-2.5 px-4">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-slate-800">{entry.name}</span>
-                            {mode === "pnms" && i === 0 && (
-                              <span className="text-[8px] font-bold uppercase tracking-wide px-1.5 py-0.5 bg-rose-100 text-rose-600 border border-rose-200">Top Bid</span>
-                            )}
-                          </div>
-                        </td>
+                        {mode === "pnms" && (
+                          <td className="py-2.5 px-4 text-slate-500 font-mono text-[10px]">
+                            {pnmIdNumberMap.get(entry.name) ?? "—"}
+                          </td>
+                        )}
+                        <td className="py-2.5 px-4 font-semibold text-slate-800">{entry.name}</td>
                         <td className="py-2.5 px-4">
                           <div className="flex items-center gap-2">
                             {renderStars(entry.avg)}
@@ -2056,7 +2061,7 @@ export default function Dashboard() {
       {specialView === "master" ? (
         <MasterSummaryView days={days} actives={actives} />
       ) : specialView === "rank" ? (
-        <ActiveRankListView actives={actives} reviews={reviews} />
+        <ActiveRankListView actives={actives} reviews={reviews} days={days} />
       ) : (
       <>
       <header className="border-b border-slate-200/80 bg-white/90 px-4 py-2.5 flex items-center justify-between gap-4 shrink-0 backdrop-blur-xl shadow-[0_14px_28px_-24px_rgba(15,23,42,0.45)]">

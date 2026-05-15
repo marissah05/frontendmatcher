@@ -542,7 +542,7 @@ function ReviewsTab({
                 )}
               </button>
               <button
-                className={`px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wide border-l border-slate-100 transition-colors shrink-0 ${isEditing ? 'text-white bg-violet-600 hover:bg-violet-700' : 'text-violet-600 bg-violet-50 hover:bg-violet-100 hover:text-violet-700'}`}
+                className={`pl-2.5 pr-3.5 py-1.5 text-[9px] font-bold uppercase tracking-wide border-l border-slate-100 transition-colors shrink-0 ${isEditing ? 'text-white bg-violet-600 hover:bg-violet-700' : 'text-violet-600 bg-violet-50 hover:bg-violet-100 hover:text-violet-700'}`}
                 onClick={e => { e.stopPropagation(); isEditing ? setEditingPnmId(null) : handleStartEdit(pnm); }}
                 data-testid={`btn-edit-actives-${pnm.id}`}
               >

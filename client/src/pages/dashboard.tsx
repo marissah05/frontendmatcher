@@ -202,6 +202,21 @@ function ActiveRankListView({ actives, reviews, days }: { actives: Active[]; rev
     return m;
   }, [days]);
 
+  const activeRoundCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const day of (days ?? []))
+      for (const round of day.rounds) {
+        const activesSeen = new Set<string>();
+        for (const pnm of round.pnms) {
+          if (pnm.matchedWith) activesSeen.add(pnm.matchedWith);
+          if (pnm.secondMatch) activesSeen.add(pnm.secondMatch);
+        }
+        for (const aid of activesSeen)
+          counts.set(aid, (counts.get(aid) ?? 0) + 1);
+      }
+    return counts;
+  }, [days]);
+
   const rankedActives = useMemo(() => {
     const map = new Map<string, { id: string; name: string; reviews: PnmReview[] }>();
     for (const a of actives) map.set(a.id, { id: a.id, name: a.name, reviews: [] });
@@ -212,12 +227,13 @@ function ActiveRankListView({ actives, reviews, days }: { actives: Active[]; rev
     return Array.from(map.values())
       .filter(a => a.reviews.length > 0)
       .map(a => {
-        const total = a.reviews.reduce((s, r) => s + r.stars, 0);
-        const avg   = total / a.reviews.length;
-        return { ...a, total, avg, count: a.reviews.length };
+        const total      = a.reviews.reduce((s, r) => s + r.stars, 0);
+        const avg        = total / a.reviews.length;
+        const roundCount = activeRoundCounts.get(a.id) ?? 0;
+        return { ...a, total, avg, count: a.reviews.length, roundCount };
       })
-      .sort((a, b) => b.avg - a.avg || b.count - a.count);
-  }, [actives, reviews]);
+      .sort((a, b) => b.roundCount - a.roundCount || b.avg - a.avg);
+  }, [actives, reviews, activeRoundCounts]);
 
   const rankedPnms = useMemo(() => {
     const map = new Map<string, { id: string; name: string; reviews: PnmReview[] }>();
@@ -317,6 +333,7 @@ function ActiveRankListView({ actives, reviews, days }: { actives: Active[]; rev
                     {mode === "pnms" ? "Name" : "Active Name"}
                   </th>
                   <th className="py-2 px-4 text-left text-[9px] font-bold uppercase tracking-wider text-slate-400">Avg Score</th>
+                  {mode === "actives" && <th className="py-2 px-4 text-center text-[9px] font-bold uppercase tracking-wider text-slate-400 w-16">Rounds</th>}
                   <th className="py-2 px-4 text-center text-[9px] font-bold uppercase tracking-wider text-slate-400 w-20">Reviews</th>
                   <th className="py-2 px-4 text-center text-[9px] font-bold uppercase tracking-wider text-slate-400 w-16">Total Pts</th>
                   <th className="py-2 px-3 w-8" />
@@ -348,13 +365,18 @@ function ActiveRankListView({ actives, reviews, days }: { actives: Active[]; rev
                             <span className="text-[9px] text-slate-300">/ 5</span>
                           </div>
                         </td>
+                        {mode === "actives" && (
+                          <td className="py-2.5 px-4 text-center font-bold text-violet-600">
+                            {"roundCount" in entry ? entry.roundCount : "—"}
+                          </td>
+                        )}
                         <td className="py-2.5 px-4 text-center text-slate-500">{entry.count}</td>
                         <td className="py-2.5 px-4 text-center font-semibold text-slate-600">{entry.total}</td>
                         <td className="py-2.5 px-3 text-center text-slate-300 text-[10px]">{isExpanded ? "▲" : "▼"}</td>
                       </tr>
                       {isExpanded && (
                         <tr className={`border-b border-slate-100 ${expandRow}`}>
-                          <td colSpan={6} className="px-6 py-3">
+                          <td colSpan={mode === "actives" ? 7 : 6} className="px-6 py-3">
                             <div className={`text-[9px] font-bold uppercase tracking-wider mb-2 ${labelColor}`}>
                               Score Breakdown — {entry.count} review{entry.count !== 1 ? "s" : ""}
                             </div>

@@ -191,8 +191,9 @@ function MasterSummaryView({ days, actives }: { days: DayData[]; actives: Active
 // ── ActiveRankListView component ──────────────────────────────────────────────
 function ActiveRankListView({ actives, reviews }: { actives: Active[]; reviews: PnmReview[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [mode, setMode] = useState<"pnms" | "actives">("pnms");
 
-  const ranked = useMemo(() => {
+  const rankedActives = useMemo(() => {
     const map = new Map<string, { id: string; name: string; reviews: PnmReview[] }>();
     for (const a of actives) map.set(a.id, { id: a.id, name: a.name, reviews: [] });
     for (const r of reviews) {
@@ -209,21 +210,90 @@ function ActiveRankListView({ actives, reviews }: { actives: Active[]; reviews: 
       .sort((a, b) => b.avg - a.avg || b.count - a.count);
   }, [actives, reviews]);
 
-  const renderStars = (n: number, outOf = 5) => (
+  const rankedPnms = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; reviews: PnmReview[] }>();
+    for (const r of reviews) {
+      if (!map.has(r.pnmId)) map.set(r.pnmId, { id: r.pnmId, name: r.pnmName, reviews: [] });
+      map.get(r.pnmId)!.reviews.push(r);
+    }
+    return Array.from(map.values())
+      .map(p => {
+        const total = p.reviews.reduce((s, r) => s + r.stars, 0);
+        const avg   = total / p.reviews.length;
+        return { ...p, total, avg, count: p.reviews.length };
+      })
+      .sort((a, b) => b.avg - a.avg || b.count - a.count);
+  }, [reviews]);
+
+  const ranked = mode === "pnms" ? rankedPnms : rankedActives;
+
+  const renderStars = (n: number) => (
     <span className="inline-flex gap-0.5">
-      {Array.from({ length: outOf }).map((_, i) => (
+      {Array.from({ length: 5 }).map((_, i) => (
         <span key={i} className={`text-[11px] ${i < Math.round(n) ? "text-amber-400" : "text-slate-200"}`}>★</span>
       ))}
     </span>
   );
 
+  const medal = (i: number) =>
+    i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`;
+  const medalColor = (i: number) =>
+    i === 0 ? "text-amber-500" : i === 1 ? "text-slate-400" : i === 2 ? "text-amber-700" : "text-slate-300";
+
+  const expandBg   = mode === "pnms" ? "bg-rose-50/40"   : "bg-violet-50/50";
+  const expandRow  = mode === "pnms" ? "bg-rose-50/30"   : "bg-violet-50/30";
+  const borderT    = mode === "pnms" ? "border-rose-100" : "border-violet-100";
+  const labelColor = mode === "pnms" ? "text-rose-700"   : "text-violet-700";
+
   return (
     <div className="flex-1 overflow-auto bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96)_38%,_rgba(241,245,249,1))]">
       <div className="max-w-3xl mx-auto px-6 py-6">
-        <div className="mb-5">
-          <h2 className="text-[15px] font-bold text-slate-800 tracking-tight">Active Rank List</h2>
-          <p className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-wider">Ranked by average star rating from comments</p>
+
+        {/* Header + toggle */}
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-[15px] font-bold text-slate-800 tracking-tight">
+              {mode === "pnms" ? "PNM Rank List" : "Active Rank List"}
+            </h2>
+            <p className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-wider">
+              {mode === "pnms"
+                ? "PNMs ranked by average rating — highest = strongest bid candidates"
+                : "Actives ranked by average rating they gave across all PNMs"}
+            </p>
+          </div>
+          <div className="flex shrink-0 border border-slate-200 overflow-hidden shadow-sm">
+            <button
+              onClick={() => { setMode("pnms"); setExpandedId(null); }}
+              className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${mode === "pnms" ? "bg-rose-500 text-white" : "bg-white text-slate-500 hover:bg-slate-50"}`}
+              data-testid="toggle-rank-pnms"
+            >
+              PNMs
+            </button>
+            <button
+              onClick={() => { setMode("actives"); setExpandedId(null); }}
+              className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors border-l border-slate-200 ${mode === "actives" ? "bg-violet-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50"}`}
+              data-testid="toggle-rank-actives"
+            >
+              Actives
+            </button>
+          </div>
         </div>
+
+        {/* Stats bar */}
+        {ranked.length > 0 && (
+          <div className="flex gap-3 mb-4">
+            {[
+              { label: "Ranked", value: ranked.length },
+              { label: "Top Score", value: ranked[0]?.avg.toFixed(2) + " / 5" },
+              { label: "Total Reviews", value: reviews.length },
+            ].map(s => (
+              <div key={s.label} className="flex-1 bg-white border border-slate-200 px-3 py-2 shadow-sm">
+                <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{s.label}</div>
+                <div className="text-[13px] font-bold text-slate-700 mt-0.5">{s.value}</div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {ranked.length === 0 ? (
           <div className="bg-white border border-slate-200 px-6 py-12 text-center shadow-sm">
@@ -236,8 +306,10 @@ function ActiveRankListView({ actives, reviews }: { actives: Active[]; reviews: 
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/70">
                   <th className="py-2 px-4 text-left text-[9px] font-bold uppercase tracking-wider text-slate-400 w-10">#</th>
-                  <th className="py-2 px-4 text-left text-[9px] font-bold uppercase tracking-wider text-slate-400">Name</th>
-                  <th className="py-2 px-4 text-left text-[9px] font-bold uppercase tracking-wider text-slate-400">Score</th>
+                  <th className="py-2 px-4 text-left text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                    {mode === "pnms" ? "PNM Name" : "Active Name"}
+                  </th>
+                  <th className="py-2 px-4 text-left text-[9px] font-bold uppercase tracking-wider text-slate-400">Avg Score</th>
                   <th className="py-2 px-4 text-center text-[9px] font-bold uppercase tracking-wider text-slate-400 w-20">Reviews</th>
                   <th className="py-2 px-4 text-center text-[9px] font-bold uppercase tracking-wider text-slate-400 w-16">Total Pts</th>
                   <th className="py-2 px-3 w-8" />
@@ -249,16 +321,21 @@ function ActiveRankListView({ actives, reviews }: { actives: Active[]; reviews: 
                   return (
                     <Fragment key={entry.id}>
                       <tr
-                        className={`border-b border-slate-50 cursor-pointer transition-colors ${isExpanded ? "bg-violet-50/50" : "hover:bg-slate-50/50"}`}
+                        className={`border-b border-slate-50 cursor-pointer transition-colors ${isExpanded ? expandBg : "hover:bg-slate-50/50"}`}
                         onClick={() => setExpandedId(isExpanded ? null : entry.id)}
                         data-testid={`row-rank-${entry.id}`}
                       >
                         <td className="py-2.5 px-4">
-                          <span className={`text-[10px] font-bold ${i === 0 ? "text-amber-500" : i === 1 ? "text-slate-400" : i === 2 ? "text-amber-700" : "text-slate-300"}`}>
-                            {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
-                          </span>
+                          <span className={`text-[10px] font-bold ${medalColor(i)}`}>{medal(i)}</span>
                         </td>
-                        <td className="py-2.5 px-4 font-semibold text-slate-800">{entry.name}</td>
+                        <td className="py-2.5 px-4">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-slate-800">{entry.name}</span>
+                            {mode === "pnms" && i === 0 && (
+                              <span className="text-[8px] font-bold uppercase tracking-wide px-1.5 py-0.5 bg-rose-100 text-rose-600 border border-rose-200">Top Bid</span>
+                            )}
+                          </div>
+                        </td>
                         <td className="py-2.5 px-4">
                           <div className="flex items-center gap-2">
                             {renderStars(entry.avg)}
@@ -271,9 +348,11 @@ function ActiveRankListView({ actives, reviews }: { actives: Active[]; reviews: 
                         <td className="py-2.5 px-3 text-center text-slate-300 text-[10px]">{isExpanded ? "▲" : "▼"}</td>
                       </tr>
                       {isExpanded && (
-                        <tr className="border-b border-slate-100 bg-violet-50/30">
+                        <tr className={`border-b border-slate-100 ${expandRow}`}>
                           <td colSpan={6} className="px-6 py-3">
-                            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-2">Score Breakdown — {entry.count} review{entry.count !== 1 ? "s" : ""}</div>
+                            <div className={`text-[9px] font-bold uppercase tracking-wider mb-2 ${labelColor}`}>
+                              Score Breakdown — {entry.count} review{entry.count !== 1 ? "s" : ""}
+                            </div>
                             <div className="space-y-1.5">
                               {entry.reviews
                                 .slice()
@@ -281,7 +360,9 @@ function ActiveRankListView({ actives, reviews }: { actives: Active[]; reviews: 
                                 .map(r => (
                                   <div key={r.id} className="flex items-start gap-3 py-1.5 px-3 bg-white border border-slate-100 rounded">
                                     <div className="flex-1 min-w-0">
-                                      <span className="font-semibold text-slate-700 text-[11px]">{r.pnmName}</span>
+                                      <span className="font-semibold text-slate-700 text-[11px]">
+                                        {mode === "pnms" ? r.activeName : r.pnmName}
+                                      </span>
                                       {r.note && <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">{r.note}</p>}
                                     </div>
                                     <div className="flex items-center gap-1.5 shrink-0">
@@ -291,7 +372,7 @@ function ActiveRankListView({ actives, reviews }: { actives: Active[]; reviews: 
                                   </div>
                                 ))}
                             </div>
-                            <div className="mt-2 pt-2 border-t border-violet-100 flex items-center gap-4 text-[10px] text-slate-500">
+                            <div className={`mt-2 pt-2 border-t ${borderT} flex items-center gap-4 text-[10px] text-slate-500`}>
                               <span>Avg: <strong className="text-slate-700">{entry.avg.toFixed(2)}</strong></span>
                               <span>Total pts: <strong className="text-slate-700">{entry.total}</strong></span>
                               <span>Reviews: <strong className="text-slate-700">{entry.count}</strong></span>

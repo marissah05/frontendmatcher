@@ -327,6 +327,8 @@ function ReviewsTab({
   reviewDraft, setReviewDraft,
   savingReviewId, setSavingReviewId,
   commentsSearch, setCommentsSearch,
+  commentActiveOverrides, setCommentActiveOverrides,
+  deleteReview,
 }: {
   rounds: RoundData[];
   actives: Active[];
@@ -340,7 +342,13 @@ function ReviewsTab({
   setSavingReviewId: React.Dispatch<React.SetStateAction<string | null>>;
   commentsSearch: string;
   setCommentsSearch: React.Dispatch<React.SetStateAction<string>>;
+  commentActiveOverrides: Record<string, string[]>;
+  setCommentActiveOverrides: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
+  deleteReview: (reviewId: string) => Promise<void>;
 }) {
+  const [editingPnmId, setEditingPnmId] = useState<string | null>(null);
+  const [activeSearch, setActiveSearch] = useState("");
+
   const seenNames = new Set<string>();
   const uniquePnms = rounds.flatMap(r => r.pnms).filter(p => {
     if (seenNames.has(p.name)) return false;
@@ -348,7 +356,7 @@ function ReviewsTab({
     return true;
   }).filter(p => p.name.toLowerCase().includes(commentsSearch.toLowerCase()));
 
-  // Build a map: pnmId → Set of activeIds who talked to that PNM across all rounds
+  // Build planner-derived map: pnmId → Set of activeIds
   const pnmToActiveIds = new Map<string, Set<string>>();
   rounds.forEach(round => {
     round.pnms.forEach(pnm => {
@@ -357,6 +365,44 @@ function ReviewsTab({
       if (pnm.secondMatch) pnmToActiveIds.get(pnm.id)!.add(pnm.secondMatch);
     });
   });
+
+  const getActiveIdsForPnm = (pnmId: string): string[] => {
+    const overrides = commentActiveOverrides ?? {};
+    if (overrides[pnmId] !== undefined) return overrides[pnmId];
+    return Array.from(pnmToActiveIds.get(pnmId) ?? new Set());
+  };
+
+  const handleStartEdit = (pnm: PNM) => {
+    const overrides = commentActiveOverrides ?? {};
+    if (overrides[pnm.id] === undefined) {
+      setCommentActiveOverrides(prev => ({
+        ...(prev ?? {}),
+        [pnm.id]: Array.from(pnmToActiveIds.get(pnm.id) ?? new Set()),
+      }));
+    }
+    setEditingPnmId(pnm.id);
+    setExpandedPnmId(pnm.id);
+    setActiveSearch("");
+  };
+
+  const handleRemoveActive = (pnmId: string, activeId: string) => {
+    setCommentActiveOverrides(prev => ({
+      ...(prev ?? {}),
+      [pnmId]: ((prev ?? {})[pnmId] ?? []).filter(id => id !== activeId),
+    }));
+    const reviewId = `rev_${pnmId}_${activeId}`;
+    if (reviews.find(r => r.id === reviewId)) deleteReview(reviewId);
+  };
+
+  const handleAddActive = (pnmId: string, activeId: string) => {
+    setCommentActiveOverrides(prev => {
+      const safe = prev ?? {};
+      const current = safe[pnmId] ?? Array.from(pnmToActiveIds.get(pnmId) ?? new Set());
+      if (current.includes(activeId)) return safe;
+      return { ...safe, [pnmId]: [...current, activeId] };
+    });
+    setActiveSearch("");
+  };
 
   const saveReview = async (pnmId: string, activeId: string, activeName: string, pnmName: string, stars: number, note: string) => {
     const id = `rev_${pnmId}_${activeId}`;
@@ -377,7 +423,6 @@ function ReviewsTab({
   };
 
   const allPnmsCount = rounds.flatMap(r => r.pnms).filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i).length;
-
   const importFileRef = useRef<HTMLInputElement>(null);
 
   const handleExportComments = () => {
@@ -461,92 +506,170 @@ function ReviewsTab({
       {uniquePnms.length === 0 ? (
         <div className="py-16 text-center text-[11px] text-slate-400">{allPnmsCount === 0 ? 'No PNMs imported yet.' : 'No PNMs match your search.'}</div>
       ) : uniquePnms.map(pnm => {
-        const matchedActiveIds = pnmToActiveIds.get(pnm.id) ?? new Set<string>();
-        const matchedActives = actives.filter(a => matchedActiveIds.has(a.id));
+        const finalActiveIds = getActiveIdsForPnm(pnm.id);
+        const matchedActives = actives.filter(a => finalActiveIds.includes(a.id));
         const pnmReviewsList = reviews.filter(r => r.pnmId === pnm.id);
         const avgStars = pnmReviewsList.length > 0
           ? pnmReviewsList.reduce((s, r) => s + r.stars, 0) / pnmReviewsList.length
           : null;
         const isExpanded = expandedPnmId === pnm.id;
+        const isEditing = editingPnmId === pnm.id;
+        const searchedActives = actives.filter(a =>
+          !finalActiveIds.includes(a.id) &&
+          a.name.toLowerCase().includes(activeSearch.toLowerCase())
+        );
 
         return (
           <div key={pnm.id} className="border-b border-slate-100 last:border-0" data-testid={`review-section-${pnm.id}`}>
-            <button
-              className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 transition-colors text-left"
-              onClick={() => setExpandedPnmId(isExpanded ? null : pnm.id)}
-              data-testid={`btn-expand-pnm-${pnm.id}`}
-            >
-              <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
-              <span className="flex-1 text-[11px] font-semibold text-slate-800">{pnm.name}</span>
-              {avgStars !== null ? (
-                <span className="flex items-center gap-0.5 shrink-0" data-testid={`text-avg-stars-${pnm.id}`}>
-                  {[1,2,3,4,5].map(s => (
-                    <Star key={s} className={`w-2.5 h-2.5 ${s <= Math.round(avgStars) ? 'text-amber-400 fill-amber-400' : 'text-slate-200'}`} />
-                  ))}
-                  <span className="text-[9px] text-slate-500 ml-1">{avgStars.toFixed(1)} · {pnmReviewsList.length}</span>
-                </span>
-              ) : (
-                <span className="text-[9px] text-slate-300 shrink-0">No comments</span>
-              )}
-            </button>
+            {/* PNM header row */}
+            <div className="flex items-center">
+              <button
+                className="flex-1 flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 transition-colors text-left min-w-0"
+                onClick={() => { setExpandedPnmId(isExpanded ? null : pnm.id); if (isEditing) setEditingPnmId(null); }}
+                data-testid={`btn-expand-pnm-${pnm.id}`}
+              >
+                <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
+                <span className="flex-1 text-[11px] font-semibold text-slate-800 truncate">{pnm.name}</span>
+                {avgStars !== null ? (
+                  <span className="flex items-center gap-0.5 shrink-0" data-testid={`text-avg-stars-${pnm.id}`}>
+                    {[1,2,3,4,5].map(s => (
+                      <Star key={s} className={`w-2.5 h-2.5 ${s <= Math.round(avgStars) ? 'text-amber-400 fill-amber-400' : 'text-slate-200'}`} />
+                    ))}
+                    <span className="text-[9px] text-slate-500 ml-1">{avgStars.toFixed(1)} · {pnmReviewsList.length}</span>
+                  </span>
+                ) : (
+                  <span className="text-[9px] text-slate-300 shrink-0">No comments</span>
+                )}
+              </button>
+              <button
+                className={`px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wide border-l border-slate-100 transition-colors shrink-0 ${isEditing ? 'text-violet-700 bg-violet-50/80' : 'text-slate-400 hover:text-violet-600 hover:bg-violet-50/60'}`}
+                onClick={e => { e.stopPropagation(); isEditing ? setEditingPnmId(null) : handleStartEdit(pnm); }}
+                data-testid={`btn-edit-actives-${pnm.id}`}
+              >
+                {isEditing ? "Done" : "Edit"}
+              </button>
+            </div>
 
             {isExpanded && (
-              <div className="bg-slate-50/60 border-t border-slate-100 px-3 pt-1.5 pb-2 space-y-1.5">
-                {matchedActives.length === 0 ? (
-                  <p className="text-[10px] text-slate-400 py-1">No actives matched with this PNM yet.</p>
-                ) : matchedActives.map(active => {
-                  const reviewId = `rev_${pnm.id}_${active.id}`;
-                  const existing = reviews.find(r => r.id === reviewId);
-                  const draft = reviewDraft[reviewId];
-                  const currentStars = draft?.stars ?? existing?.stars ?? 0;
-                  const currentNote = draft?.note ?? existing?.note ?? "";
-                  const isSaving = savingReviewId === reviewId;
-                  const isDirty = draft !== undefined && (draft.stars !== (existing?.stars ?? 0) || draft.note !== (existing?.note ?? ""));
-
-                  return (
-                    <div key={active.id} className="bg-white border border-slate-200 p-2" data-testid={`review-form-${pnm.id}-${active.id}`}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] font-semibold text-slate-700">{active.name}</span>
-                        {existing && !isDirty && <span className="text-[9px] text-slate-400">Saved</span>}
+              <div className="bg-slate-50/60 border-t border-slate-100 px-3 pt-2 pb-2.5">
+                {isEditing ? (
+                  /* ── Edit mode ── */
+                  <div className="space-y-2">
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Actives for {pnm.name}</p>
+                    {/* Current actives as chips */}
+                    <div className="flex flex-wrap gap-1 min-h-[26px]">
+                      {finalActiveIds.length === 0 && (
+                        <span className="text-[10px] text-slate-400 italic">No actives assigned</span>
+                      )}
+                      {finalActiveIds.map(aid => {
+                        const a = actives.find(x => x.id === aid);
+                        return (
+                          <span key={aid} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-slate-200 text-[10px] font-semibold text-slate-700 shadow-sm">
+                            {a?.name ?? aid}
+                            <button
+                              className="text-slate-300 hover:text-red-500 transition-colors"
+                              onClick={() => handleRemoveActive(pnm.id, aid)}
+                              data-testid={`btn-remove-active-${pnm.id}-${aid}`}
+                              title="Remove this active"
+                            >×</button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                    {/* Add active search */}
+                    <div className="relative">
+                      <div className="flex items-center gap-1.5 border border-slate-200 bg-white px-2 py-1">
+                        <Search className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                        <input
+                          className="flex-1 text-[10px] bg-transparent outline-none placeholder:text-slate-400 text-slate-800"
+                          placeholder="Search actives to add…"
+                          value={activeSearch}
+                          onChange={e => setActiveSearch(e.target.value)}
+                          data-testid={`input-add-active-search-${pnm.id}`}
+                        />
+                        {activeSearch && <button onClick={() => setActiveSearch("")} className="text-[9px] text-slate-300 hover:text-slate-500">✕</button>}
                       </div>
-                      <div className="flex items-center gap-0.5 mb-1.5">
-                        {[1,2,3,4,5].map(s => (
-                          <button
-                            key={s}
-                            onClick={() => setReviewDraft(prev => ({ ...prev, [reviewId]: { stars: s, note: prev[reviewId]?.note ?? existing?.note ?? "" } }))}
-                            className="transition-transform hover:scale-110"
-                            data-testid={`star-${pnm.id}-${active.id}-${s}`}
-                          >
-                            <Star className={`w-4 h-4 ${s <= currentStars ? 'text-amber-400 fill-amber-400' : 'text-slate-200 hover:text-amber-300'}`} />
-                          </button>
-                        ))}
-                        {currentStars > 0 && (
-                          <button onClick={() => setReviewDraft(prev => ({ ...prev, [reviewId]: { stars: 0, note: prev[reviewId]?.note ?? existing?.note ?? "" } }))} className="ml-1 text-[9px] text-slate-400 hover:text-slate-600">clear</button>
-                        )}
-                      </div>
-                      <Textarea
-                        placeholder={`${active.name}'s notes on ${pnm.name}…`}
-                        className="text-[11px] resize-none h-12 rounded-none border-slate-200 bg-slate-50 shadow-none focus:bg-white"
-                        value={currentNote}
-                        onChange={e => setReviewDraft(prev => ({ ...prev, [reviewId]: { stars: prev[reviewId]?.stars ?? existing?.stars ?? 0, note: e.target.value } }))}
-                        data-testid={`textarea-review-${pnm.id}-${active.id}`}
-                      />
-                      {(isDirty || (currentStars > 0 && !existing)) && (
-                        <button
-                          disabled={isSaving || currentStars === 0}
-                          onClick={async () => {
-                            await saveReview(pnm.id, active.id, active.name, pnm.name, currentStars, currentNote);
-                            setReviewDraft(prev => { const n = { ...prev }; delete n[reviewId]; return n; });
-                          }}
-                          className="mt-1 px-2 py-0.5 text-[10px] font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          data-testid={`btn-save-review-${pnm.id}-${active.id}`}
-                        >
-                          {isSaving ? "Saving…" : "Save"}
-                        </button>
+                      {activeSearch && searchedActives.length > 0 && (
+                        <div className="absolute z-20 top-full left-0 right-0 bg-white border border-slate-200 border-t-0 shadow-lg max-h-32 overflow-auto">
+                          {searchedActives.map(a => (
+                            <button
+                              key={a.id}
+                              className="w-full text-left px-3 py-1.5 text-[10px] font-medium text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition-colors border-b border-slate-50 last:border-0"
+                              onClick={() => handleAddActive(pnm.id, a.id)}
+                              data-testid={`btn-add-active-${pnm.id}-${a.id}`}
+                            >
+                              {a.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {activeSearch && searchedActives.length === 0 && (
+                        <div className="absolute z-20 top-full left-0 right-0 bg-white border border-slate-200 border-t-0 px-3 py-2 shadow-md">
+                          <span className="text-[10px] text-slate-400">No matching actives found</span>
+                        </div>
                       )}
                     </div>
-                  );
-                })}
+                  </div>
+                ) : (
+                  /* ── Review forms ── */
+                  <div className="space-y-1.5">
+                    {matchedActives.length === 0 ? (
+                      <p className="text-[10px] text-slate-400 py-1">No actives assigned yet. Click <span className="font-semibold text-violet-500">Edit</span> to add one.</p>
+                    ) : matchedActives.map(active => {
+                      const reviewId = `rev_${pnm.id}_${active.id}`;
+                      const existing = reviews.find(r => r.id === reviewId);
+                      const draft = reviewDraft[reviewId];
+                      const currentStars = draft?.stars ?? existing?.stars ?? 0;
+                      const currentNote = draft?.note ?? existing?.note ?? "";
+                      const isSaving = savingReviewId === reviewId;
+                      const isDirty = draft !== undefined && (draft.stars !== (existing?.stars ?? 0) || draft.note !== (existing?.note ?? ""));
+
+                      return (
+                        <div key={active.id} className="bg-white border border-slate-200 p-2" data-testid={`review-form-${pnm.id}-${active.id}`}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-semibold text-slate-700">{active.name}</span>
+                            {existing && !isDirty && <span className="text-[9px] text-slate-400">Saved</span>}
+                          </div>
+                          <div className="flex items-center gap-0.5 mb-1.5">
+                            {[1,2,3,4,5].map(s => (
+                              <button
+                                key={s}
+                                onClick={() => setReviewDraft(prev => ({ ...prev, [reviewId]: { stars: s, note: prev[reviewId]?.note ?? existing?.note ?? "" } }))}
+                                className="transition-transform hover:scale-110"
+                                data-testid={`star-${pnm.id}-${active.id}-${s}`}
+                              >
+                                <Star className={`w-4 h-4 ${s <= currentStars ? 'text-amber-400 fill-amber-400' : 'text-slate-200 hover:text-amber-300'}`} />
+                              </button>
+                            ))}
+                            {currentStars > 0 && (
+                              <button onClick={() => setReviewDraft(prev => ({ ...prev, [reviewId]: { stars: 0, note: prev[reviewId]?.note ?? existing?.note ?? "" } }))} className="ml-1 text-[9px] text-slate-400 hover:text-slate-600">clear</button>
+                            )}
+                          </div>
+                          <Textarea
+                            placeholder={`${active.name}'s notes on ${pnm.name}…`}
+                            className="text-[11px] resize-none h-12 rounded-none border-slate-200 bg-slate-50 shadow-none focus:bg-white"
+                            value={currentNote}
+                            onChange={e => setReviewDraft(prev => ({ ...prev, [reviewId]: { stars: prev[reviewId]?.stars ?? existing?.stars ?? 0, note: e.target.value } }))}
+                            data-testid={`textarea-review-${pnm.id}-${active.id}`}
+                          />
+                          {(isDirty || (currentStars > 0 && !existing)) && (
+                            <button
+                              disabled={isSaving || currentStars === 0}
+                              onClick={async () => {
+                                await saveReview(pnm.id, active.id, active.name, pnm.name, currentStars, currentNote);
+                                setReviewDraft(prev => { const n = { ...prev }; delete n[reviewId]; return n; });
+                              }}
+                              className="mt-1 px-2 py-0.5 text-[10px] font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              data-testid={`btn-save-review-${pnm.id}-${active.id}`}
+                            >
+                              {isSaving ? "Saving…" : "Save"}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -592,6 +715,7 @@ export default function Dashboard() {
   const [hoveredPnmId, setHoveredPnmId] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<PlannerSnapshot[]>([]);
   const [specialView, setSpecialView] = useState<null | "master" | "rank">(null);
+  const [commentActiveOverrides, setCommentActiveOverrides] = useState<Record<string, string[]>>({});
 
   const rounds = useMemo(() => days.find(d => d.id === activeDayId)?.rounds ?? [], [days, activeDayId]);
 
@@ -666,6 +790,7 @@ export default function Dashboard() {
           setActiveRoundId(data.activeRoundId ?? loadedRounds[0]?.id ?? "");
           if (data.chainLengthLimit) setChainLengthLimit(data.chainLengthLimit);
         }
+        if (data.commentActiveOverrides) setCommentActiveOverrides(data.commentActiveOverrides);
       })
       .catch(() => {
         // Network error or server down → keep mock data, show nothing to user
@@ -714,6 +839,7 @@ export default function Dashboard() {
           activeDayId,
           activeRoundId,
           chainLengthLimit,
+          commentActiveOverrides,
         };
         await fetch("/api/state", {
           method: "PUT",
@@ -728,7 +854,12 @@ export default function Dashboard() {
     return () => {
       if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     };
-  }, [days, actives, activeDayId, activeRoundId, chainLengthLimit]);
+  }, [days, actives, activeDayId, activeRoundId, chainLengthLimit, commentActiveOverrides]);
+
+  const deleteReview = useCallback(async (reviewId: string) => {
+    await fetch(`/api/reviews/${reviewId}`, { method: "DELETE" });
+    setReviews(prev => prev.filter(r => r.id !== reviewId));
+  }, []);
 
   const activeRound = useMemo(() => rounds.find(r => r.id === activeRoundId)!, [rounds, activeRoundId]);
 
@@ -1721,6 +1852,7 @@ export default function Dashboard() {
         activeDayId,
         activeRoundId,
         chainLengthLimit,
+        commentActiveOverrides,
       };
 
       const res = await fetch("/api/state", {
@@ -2514,6 +2646,9 @@ export default function Dashboard() {
                   setSavingReviewId={setSavingReviewId}
                   commentsSearch={commentsSearch}
                   setCommentsSearch={setCommentsSearch}
+                  commentActiveOverrides={commentActiveOverrides}
+                  setCommentActiveOverrides={setCommentActiveOverrides}
+                  deleteReview={deleteReview}
                 />
               )}
             </div>

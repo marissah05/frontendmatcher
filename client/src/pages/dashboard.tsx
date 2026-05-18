@@ -1,4 +1,17 @@
 import { useState, useMemo, useRef, useEffect, useCallback, Fragment } from "react";
+import {
+  loadState as idbLoadState,
+  saveState as idbSaveState,
+  loadReviews as idbLoadReviews,
+  upsertReview as idbUpsertReview,
+  deleteReviewById as idbDeleteReview,
+  listSnapshots as idbListSnapshots,
+  createSnapshot as idbCreateSnapshot,
+  getSnapshotPayload,
+  deleteSnapshotById,
+  exportFullBackup,
+  importFullBackup,
+} from "@/lib/localStore";
 import { 
   DndContext, 
   DragOverlay, 
@@ -516,15 +529,8 @@ function ReviewsTab({
     const id = `rev_${pnmId}_${activeId}`;
     setSavingReviewId(id);
     try {
-      const res = await fetch(`/api/reviews/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pnmId, activeId, activeName, pnmName, stars, note }),
-      });
-      if (res.ok) {
-        const saved: PnmReview = await res.json();
-        setReviews(prev => [...prev.filter(r => r.id !== saved.id), saved]);
-      }
+      const saved = await idbUpsertReview({ id, pnmId, activeId, activeName, pnmName, stars, note });
+      setReviews(prev => [...prev.filter(r => r.id !== saved.id), saved]);
     } finally {
       setSavingReviewId(null);
     }
@@ -856,11 +862,10 @@ export default function Dashboard() {
   const isInitializedRef = useRef(false);          // becomes true after boot load settles
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load persisted state from the database on first mount.
-  // If the API returns null (empty database), keep the mock data as-is.
+  // Load persisted state from IndexedDB on first mount.
+  // If nothing is stored yet, keep the mock data as-is.
   useEffect(() => {
-    fetch("/api/state")
-      .then(res => res.json())
+    idbLoadState()
       .then(data => {
         if (!data) return; // first launch → keep mock data
         const parseRounds = (rawRounds: any[]): RoundData[] => (rawRounds ?? []).map((r: any) => ({
@@ -877,7 +882,7 @@ export default function Dashboard() {
           } as PNM)),
         }));
         if (data.days) {
-          // New multi-day format
+          // Multi-day format
           const loadedDays: DayData[] = data.days.map((d: any) => ({
             id: d.id,
             name: d.name,
@@ -890,19 +895,10 @@ export default function Dashboard() {
           const activeDay = loadedDays.find(d => d.id === loadedDayId);
           setActiveRoundId(data.activeRoundId ?? activeDay?.rounds[0]?.id ?? "");
           if (data.chainLengthLimit) setChainLengthLimit(data.chainLengthLimit);
-        } else if (data.rounds) {
-          // Legacy single-day format → migrate into Sisterhood Day
-          const loadedRounds = parseRounds(data.rounds);
-          setDays(prev => prev.map(d => d.id === "sisterhood" ? { ...d, rounds: loadedRounds } : d));
-          setActives(data.actives ?? []);
-          setActiveRoundId(data.activeRoundId ?? loadedRounds[0]?.id ?? "");
-          if (data.chainLengthLimit) setChainLengthLimit(data.chainLengthLimit);
         }
         if (data.commentActiveOverrides) setCommentActiveOverrides(data.commentActiveOverrides);
       })
-      .catch(() => {
-        // Network error or server down → keep mock data, show nothing to user
-      })
+      .catch(() => {})
       .finally(() => {
         setIsLoading(false);
         setTimeout(() => { isInitializedRef.current = true; }, 0);
@@ -911,9 +907,8 @@ export default function Dashboard() {
 
   // Load reviews on mount
   useEffect(() => {
-    fetch("/api/reviews")
-      .then(r => r.json())
-      .then((data: PnmReview[]) => { if (Array.isArray(data)) setReviews(data); })
+    idbLoadReviews()
+      .then(data => { if (Array.isArray(data)) setReviews(data); })
       .catch(() => {});
   }, []);
 
@@ -941,18 +936,13 @@ export default function Dashboard() {
             secondMatch: p.secondMatch ?? null,
           })),
         }));
-        const body = {
+        await idbSaveState({
           days: days.map(d => ({ id: d.id, name: d.name, rounds: serializeRounds(d.rounds) })),
           actives: actives.map(a => ({ id: a.id, name: a.name })),
           activeDayId,
           activeRoundId,
           chainLengthLimit,
           commentActiveOverrides,
-        };
-        await fetch("/api/state", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
         });
       } catch {
         // Autosave failures are silent — user can still use manual Save button
@@ -965,7 +955,7 @@ export default function Dashboard() {
   }, [days, actives, activeDayId, activeRoundId, chainLengthLimit, commentActiveOverrides]);
 
   const deleteReview = useCallback(async (reviewId: string) => {
-    await fetch(`/api/reviews/${reviewId}`, { method: "DELETE" });
+    await idbDeleteReview(reviewId);
     setReviews(prev => prev.filter(r => r.id !== reviewId));
   }, []);
 
@@ -1841,8 +1831,7 @@ export default function Dashboard() {
 
   const loadSnapshots = async () => {
     try {
-      const res = await fetch("/api/snapshots");
-      const data = await res.json();
+      const data = await idbListSnapshots();
       setSnapshotList(data);
     } catch {
       toast.error("Could not load snapshots");
@@ -1855,7 +1844,7 @@ export default function Dashboard() {
     setIsSavingSnapshot(true);
     try {
       const payload = {
-        rounds: rounds.map((r, i) => ({   // snapshot saves current day's rounds
+        rounds: rounds.map((r, i) => ({
           id: r.id,
           name: r.name,
           sortOrder: r.sortOrder ?? i,
@@ -1871,12 +1860,8 @@ export default function Dashboard() {
         activeRoundId,
         chainLengthLimit,
       };
-      const res = await fetch("/api/snapshots", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label, payload }),
-      });
-      if (!res.ok) throw new Error();
+      const id = `snap_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      await idbCreateSnapshot(id, label, payload);
       setSnapshotLabel("");
       toast.success(`Snapshot "${label}" saved`);
       await loadSnapshots();
@@ -1889,9 +1874,8 @@ export default function Dashboard() {
 
   const handleRestoreSnapshot = async (id: string) => {
     try {
-      const res = await fetch(`/api/snapshots/${id}/restore`, { method: "POST" });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
+      const data = await getSnapshotPayload(id) as any;
+      if (!data) throw new Error("Snapshot not found");
 
       // Pause autosave while we apply restored state
       isInitializedRef.current = false;
@@ -1927,8 +1911,7 @@ export default function Dashboard() {
 
   const handleDeleteSnapshot = async (id: string) => {
     try {
-      const res = await fetch(`/api/snapshots/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error();
+      await deleteSnapshotById(id);
       setSnapshotList(prev => prev.filter(s => s.id !== id));
       toast.success("Snapshot deleted");
     } catch {
@@ -1939,7 +1922,7 @@ export default function Dashboard() {
   const saveState = async () => {
     setIsSaving(true);
     try {
-      const body = {
+      await idbSaveState({
         days: days.map(d => ({
           id: d.id,
           name: d.name,
@@ -1961,26 +1944,38 @@ export default function Dashboard() {
         activeRoundId,
         chainLengthLimit,
         commentActiveOverrides,
-      };
-
-      const res = await fetch("/api/state", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
       });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        console.error("SAVE ERROR:", errorData);
-        throw new Error(errorData.details || errorData.error || "Server error");
-      }
-      toast.success("Saved to database");
+      toast.success("Saved locally");
     } catch (err) {
       console.error(err);
       toast.error("Save failed — " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const backupFileRef = useRef<HTMLInputElement>(null);
+
+  const handleExportBackup = async () => {
+    try {
+      await exportFullBackup();
+      toast.success("Backup downloaded");
+    } catch {
+      toast.error("Failed to export backup");
+    }
+  };
+
+  const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      await importFullBackup(file);
+      toast.success("Backup imported — reloading…");
+      setTimeout(() => window.location.reload(), 800);
+    } catch {
+      toast.error("Could not read backup file. Make sure it's a valid MatchOps backup.");
+    }
+    e.target.value = "";
   };
 
   const activeSummary = useMemo(() => {
@@ -2152,8 +2147,39 @@ export default function Dashboard() {
           </Button>
         </div>
 
-        {/* RIGHT: Save + Undo */}
+        {/* RIGHT: Backup + Save + Undo */}
         <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportBackup}
+            className="h-7 rounded-none border-slate-300 bg-white px-2.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-800"
+            data-testid="button-export-backup"
+            title="Download a full backup of all data"
+          >
+            <Download className="mr-1.5 h-3 w-3" />
+            Backup
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => backupFileRef.current?.click()}
+            className="h-7 rounded-none border-slate-300 bg-white px-2.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-800"
+            data-testid="button-import-backup"
+            title="Restore data from a backup file"
+          >
+            <Upload className="mr-1.5 h-3 w-3" />
+            Restore
+          </Button>
+          <input
+            ref={backupFileRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleImportBackup}
+            data-testid="input-backup-file"
+          />
+          <div className="h-5 w-px bg-slate-200 mx-0.5" />
           <Button
             variant="outline"
             size="sm"

@@ -809,6 +809,7 @@ export default function Dashboard() {
   const [isPnmImportOpen, setIsPnmImportOpen] = useState(false);
   const [isActiveImportOpen, setIsActiveImportOpen] = useState(false);
   const [isBumpChainsOpen, setIsBumpChainsOpen] = useState(false);
+  const [isMasterExportOpen, setIsMasterExportOpen] = useState(false);
   const [activeView, setActiveView] = useState<'planner' | 'summary' | 'reviews'>('planner');
   const [summarySearch, setSummarySearch] = useState("");
   const [commentsSearch, setCommentsSearch] = useState("");
@@ -1979,7 +1980,14 @@ export default function Dashboard() {
   };
 
   // ── Master Export (multi-sheet Excel) ─────────────────────────────────────
-  const handleMasterExport = () => {
+  const addAutoFilter = (ws: XLSX.WorkSheet) => {
+    const ref = ws['!ref'];
+    if (!ref) return;
+    const range = XLSX.utils.decode_range(ref);
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 0, c: range.e.c } }) };
+  };
+
+  const handleMasterExport = (sortMode: "round" | "id") => {
     try {
       const wb = XLSX.utils.book_new();
 
@@ -1999,16 +2007,35 @@ export default function Dashboard() {
       for (const day of days) {
         if (day.rounds.length === 0) continue;
 
-        // Collect unique PNMs across all rounds (keyed by pnm.id)
-        const pnmOrder: string[] = [];
+        // Collect unique PNMs (keyed by pnm.id) tracking first-round index
+        const pnmFirstRound = new Map<string, number>();
         const pnmMeta = new Map<string, { idNumber: string; name: string }>();
-        for (const round of day.rounds) {
-          for (const pnm of round.pnms) {
+        for (let ri = 0; ri < day.rounds.length; ri++) {
+          for (const pnm of day.rounds[ri].pnms) {
             if (!pnmMeta.has(pnm.id)) {
-              pnmOrder.push(pnm.id);
               pnmMeta.set(pnm.id, { idNumber: pnm.idNumber, name: pnm.name });
+              pnmFirstRound.set(pnm.id, ri);
             }
           }
+        }
+
+        let pnmOrder = Array.from(pnmMeta.keys());
+        if (sortMode === "id") {
+          pnmOrder.sort((a, b) => {
+            const na = parseInt(pnmMeta.get(a)!.idNumber) || 0;
+            const nb = parseInt(pnmMeta.get(b)!.idNumber) || 0;
+            return na - nb;
+          });
+        } else {
+          // Sort by first round, then by ID# within same round
+          pnmOrder.sort((a, b) => {
+            const ra = pnmFirstRound.get(a) ?? 0;
+            const rb = pnmFirstRound.get(b) ?? 0;
+            if (ra !== rb) return ra - rb;
+            const na = parseInt(pnmMeta.get(a)!.idNumber) || 0;
+            const nb = parseInt(pnmMeta.get(b)!.idNumber) || 0;
+            return na - nb;
+          });
         }
 
         // Header: ID# — PNM Name | Round1 M1 | Round1 M2 | Round2 M1 | Round2 M2 | …
@@ -2030,6 +2057,8 @@ export default function Dashboard() {
         }
 
         const ws = XLSX.utils.aoa_to_sheet(rows);
+        ws['!cols'] = [{ wch: 30 }, ...day.rounds.flatMap(() => [{ wch: 20 }, { wch: 20 }])];
+        addAutoFilter(ws);
         XLSX.utils.book_append_sheet(wb, ws, day.name.slice(0, 31));
       }
 
@@ -2038,6 +2067,8 @@ export default function Dashboard() {
         ["Name"],
         ...actives.map(a => [a.name]),
       ]);
+      activesWs['!cols'] = [{ wch: 25 }];
+      addAutoFilter(activesWs);
       XLSX.utils.book_append_sheet(wb, activesWs, "Actives");
 
       // Reviews sheet — one row per PNM, actives combined with commas
@@ -2059,6 +2090,8 @@ export default function Dashboard() {
         reviewRows.push([`${idNum} — ${pnmName}`, reviewers, stars, notes]);
       }
       const reviewsWs = XLSX.utils.aoa_to_sheet(reviewRows);
+      reviewsWs['!cols'] = [{ wch: 30 }, { wch: 30 }, { wch: 18 }, { wch: 50 }];
+      addAutoFilter(reviewsWs);
       XLSX.utils.book_append_sheet(wb, reviewsWs, "Reviews");
 
       // Hidden state sheet for re-import
@@ -2441,10 +2474,41 @@ export default function Dashboard() {
                     {isToolsMenuOpen ? 'Export Round CSV' : null}
                   </Button>
 
-                  <Button variant="outline" size="sm" className={`h-10 text-[11px] rounded-none w-full bg-sky-50/95 hover:bg-sky-100 border-sky-300 text-sky-700 font-semibold shadow-[0_12px_24px_-22px_rgba(14,165,233,0.35)] ${isToolsMenuOpen ? 'justify-start px-3.5' : 'justify-center px-0'}`} onClick={handleMasterExport} data-testid="button-master-export">
-                    <Download className={`w-3 h-3 ${isToolsMenuOpen ? 'mr-2' : ''}`} />
-                    {isToolsMenuOpen ? 'Export All Days (.xlsx)' : null}
-                  </Button>
+                  <Dialog open={isMasterExportOpen} onOpenChange={setIsMasterExportOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="sm" className={`h-10 text-[11px] rounded-none w-full bg-sky-50/95 hover:bg-sky-100 border-sky-300 text-sky-700 font-semibold shadow-[0_12px_24px_-22px_rgba(14,165,233,0.35)] ${isToolsMenuOpen ? 'justify-start px-3.5' : 'justify-center px-0'}`} data-testid="button-master-export">
+                        <Download className={`w-3 h-3 ${isToolsMenuOpen ? 'mr-2' : ''}`} />
+                        {isToolsMenuOpen ? 'Export All Days (.xlsx)' : null}
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-sm rounded-none">
+                      <DialogHeader>
+                        <DialogTitle>Export All Days</DialogTitle>
+                        <DialogDescription>
+                          Choose how PNMs are sorted in the Excel file. Every column will also have a sort/filter arrow so you can re-sort in Excel at any time.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="flex flex-col gap-3 pt-2">
+                        <Button
+                          className="w-full rounded-none h-14 flex flex-col items-start px-4 bg-sky-600 hover:bg-sky-700 text-white"
+                          onClick={() => { setIsMasterExportOpen(false); handleMasterExport("round"); }}
+                          data-testid="button-export-sort-round"
+                        >
+                          <span className="font-semibold text-sm">Sort by Round</span>
+                          <span className="text-xs font-normal opacity-80">Round 1 PNMs first, then Round 2, etc. — within each round sorted by ID#</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="w-full rounded-none h-14 flex flex-col items-start px-4 border-sky-300 text-sky-700 hover:bg-sky-50"
+                          onClick={() => { setIsMasterExportOpen(false); handleMasterExport("id"); }}
+                          data-testid="button-export-sort-id"
+                        >
+                          <span className="font-semibold text-sm">Sort by ID#</span>
+                          <span className="text-xs font-normal opacity-70">All PNMs in numeric ID order regardless of round</span>
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
 
                   <Button variant="outline" size="sm" className={`h-10 text-[11px] rounded-none w-full bg-amber-50/95 hover:bg-amber-100 border-amber-300 text-amber-700 font-semibold shadow-[0_12px_24px_-22px_rgba(245,158,11,0.35)] ${isToolsMenuOpen ? 'justify-start px-3.5' : 'justify-center px-0'}`} onClick={() => masterImportFileRef.current?.click()} data-testid="button-master-import">
                     <Upload className={`w-3 h-3 ${isToolsMenuOpen ? 'mr-2' : ''}`} />

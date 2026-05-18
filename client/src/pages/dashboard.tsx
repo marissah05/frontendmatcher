@@ -1983,18 +1983,30 @@ export default function Dashboard() {
     try {
       const wb = XLSX.utils.book_new();
 
+      // Build pnmId → idNumber lookup across all days/rounds
+      const pnmIdNumberLookup = new Map<string, string>();
+      for (const day of days) {
+        for (const round of day.rounds) {
+          for (const pnm of round.pnms) {
+            if (!pnmIdNumberLookup.has(pnm.id)) {
+              pnmIdNumberLookup.set(pnm.id, pnm.idNumber);
+            }
+          }
+        }
+      }
+
       // One sheet per day
       for (const day of days) {
         const rows: (string | number)[][] = [];
         for (const round of day.rounds) {
           rows.push([round.name]);
-          rows.push(["ID#", "PNM Name", "M1 Match", "M2 Match", "Bump Chain"]);
+          rows.push(["ID# — PNM Name", "M1 Match", "M2 Match", "Bump Chain"]);
           const analysis = buildChainAnalysis(round.pnms);
           for (const pnm of round.pnms) {
             const m1Name = pnm.matchedWith ? (activeNameById.get(pnm.matchedWith) ?? pnm.matchedWith) : "";
             const m2Name = pnm.secondMatch ? (activeNameById.get(pnm.secondMatch) ?? pnm.secondMatch) : "";
             const chain = pnm.matchedWith ? analysis.activeToChain.get(pnm.matchedWith) : undefined;
-            rows.push([pnm.idNumber, pnm.name, m1Name, m2Name, chain ? chain.display : ""]);
+            rows.push([`${pnm.idNumber} — ${pnm.name}`, m1Name, m2Name, chain ? chain.display : ""]);
           }
           rows.push([]);
         }
@@ -2011,11 +2023,25 @@ export default function Dashboard() {
       ]);
       XLSX.utils.book_append_sheet(wb, activesWs, "Actives");
 
-      // Reviews sheet
-      const reviewsWs = XLSX.utils.aoa_to_sheet([
-        ["PNM Name", "Active Name", "Stars (1-5)", "Notes"],
-        ...reviews.map(r => [r.pnmName, r.activeName, r.stars, r.note]),
-      ]);
+      // Reviews sheet — one row per PNM, actives combined with commas
+      const reviewsByPnm = new Map<string, typeof reviews>();
+      for (const r of reviews) {
+        const bucket = reviewsByPnm.get(r.pnmId) ?? [];
+        bucket.push(r);
+        reviewsByPnm.set(r.pnmId, bucket);
+      }
+      const reviewRows: (string | number)[][] = [
+        ["ID# — PNM Name", "Reviewer(s)", "Star Rating(s)", "Notes"],
+      ];
+      for (const [pnmId, pnmReviews] of reviewsByPnm) {
+        const idNum = pnmIdNumberLookup.get(pnmId) ?? "";
+        const pnmName = pnmReviews[0].pnmName;
+        const reviewers = pnmReviews.map(r => r.activeName).join(", ");
+        const stars = pnmReviews.map(r => r.stars ? `${r.stars}/5` : "—").join(", ");
+        const notes = pnmReviews.map(r => r.note?.trim() || "—").join(" | ");
+        reviewRows.push([`${idNum} — ${pnmName}`, reviewers, stars, notes]);
+      }
+      const reviewsWs = XLSX.utils.aoa_to_sheet(reviewRows);
       XLSX.utils.book_append_sheet(wb, reviewsWs, "Reviews");
 
       // Hidden state sheet for re-import

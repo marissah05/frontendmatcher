@@ -1995,25 +1995,42 @@ export default function Dashboard() {
         }
       }
 
-      // One sheet per day
+      // One sheet per day — one row per unique PNM, round matches as extra columns
       for (const day of days) {
-        const rows: (string | number)[][] = [];
+        if (day.rounds.length === 0) continue;
+
+        // Collect unique PNMs across all rounds (keyed by pnm.id)
+        const pnmOrder: string[] = [];
+        const pnmMeta = new Map<string, { idNumber: string; name: string }>();
         for (const round of day.rounds) {
-          rows.push([round.name]);
-          rows.push(["ID# — PNM Name", "M1 Match", "M2 Match", "Bump Chain"]);
-          const analysis = buildChainAnalysis(round.pnms);
           for (const pnm of round.pnms) {
-            const m1Name = pnm.matchedWith ? (activeNameById.get(pnm.matchedWith) ?? pnm.matchedWith) : "";
-            const m2Name = pnm.secondMatch ? (activeNameById.get(pnm.secondMatch) ?? pnm.secondMatch) : "";
-            const chain = pnm.matchedWith ? analysis.activeToChain.get(pnm.matchedWith) : undefined;
-            rows.push([`${pnm.idNumber} — ${pnm.name}`, m1Name, m2Name, chain ? chain.display : ""]);
+            if (!pnmMeta.has(pnm.id)) {
+              pnmOrder.push(pnm.id);
+              pnmMeta.set(pnm.id, { idNumber: pnm.idNumber, name: pnm.name });
+            }
           }
-          rows.push([]);
         }
-        if (rows.length > 0) {
-          const ws = XLSX.utils.aoa_to_sheet(rows);
-          XLSX.utils.book_append_sheet(wb, ws, day.name.slice(0, 31));
+
+        // Header: ID# — PNM Name | Round1 M1 | Round1 M2 | Round2 M1 | Round2 M2 | …
+        const header: string[] = ["ID# — PNM Name"];
+        for (const round of day.rounds) {
+          header.push(`${round.name} — M1`, `${round.name} — M2`);
         }
+        const rows: (string | number)[][] = [header];
+
+        for (const pnmId of pnmOrder) {
+          const meta = pnmMeta.get(pnmId)!;
+          const row: (string | number)[] = [`${meta.idNumber} — ${meta.name}`];
+          for (const round of day.rounds) {
+            const pnm = round.pnms.find(p => p.id === pnmId);
+            row.push(pnm?.matchedWith ? (activeNameById.get(pnm.matchedWith) ?? pnm.matchedWith) : "");
+            row.push(pnm?.secondMatch ? (activeNameById.get(pnm.secondMatch) ?? pnm.secondMatch) : "");
+          }
+          rows.push(row);
+        }
+
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        XLSX.utils.book_append_sheet(wb, ws, day.name.slice(0, 31));
       }
 
       // Actives sheet

@@ -1978,6 +1978,122 @@ export default function Dashboard() {
     e.target.value = "";
   };
 
+  // ── Master Export (multi-sheet Excel) ─────────────────────────────────────
+  const handleMasterExport = () => {
+    try {
+      const wb = XLSX.utils.book_new();
+
+      // One sheet per day
+      for (const day of days) {
+        const rows: (string | number)[][] = [];
+        for (const round of day.rounds) {
+          rows.push([round.name]);
+          rows.push(["ID#", "PNM Name", "M1 Match", "M2 Match", "Bump Chain"]);
+          const analysis = buildChainAnalysis(round.pnms);
+          for (const pnm of round.pnms) {
+            const m1Name = pnm.matchedWith ? (activeNameById.get(pnm.matchedWith) ?? pnm.matchedWith) : "";
+            const m2Name = pnm.secondMatch ? (activeNameById.get(pnm.secondMatch) ?? pnm.secondMatch) : "";
+            const chain = pnm.matchedWith ? analysis.activeToChain.get(pnm.matchedWith) : undefined;
+            rows.push([pnm.idNumber, pnm.name, m1Name, m2Name, chain ? chain.display : ""]);
+          }
+          rows.push([]);
+        }
+        if (rows.length > 0) {
+          const ws = XLSX.utils.aoa_to_sheet(rows);
+          XLSX.utils.book_append_sheet(wb, ws, day.name.slice(0, 31));
+        }
+      }
+
+      // Actives sheet
+      const activesWs = XLSX.utils.aoa_to_sheet([
+        ["Name"],
+        ...actives.map(a => [a.name]),
+      ]);
+      XLSX.utils.book_append_sheet(wb, activesWs, "Actives");
+
+      // Reviews sheet
+      const reviewsWs = XLSX.utils.aoa_to_sheet([
+        ["PNM Name", "Active Name", "Stars (1-5)", "Notes"],
+        ...reviews.map(r => [r.pnmName, r.activeName, r.stars, r.note]),
+      ]);
+      XLSX.utils.book_append_sheet(wb, reviewsWs, "Reviews");
+
+      // Hidden state sheet for re-import
+      const statePayload = {
+        days: days.map(d => ({
+          id: d.id, name: d.name,
+          rounds: d.rounds.map((r, i) => ({
+            id: r.id, name: r.name, sortOrder: r.sortOrder ?? i,
+            pnms: r.pnms.map(p => ({
+              id: p.id, name: p.name, idNumber: p.idNumber,
+              matchedWith: p.matchedWith ?? null,
+              secondMatch: p.secondMatch ?? null,
+            })),
+          })),
+        })),
+        actives: actives.map(a => ({ id: a.id, name: a.name })),
+        activeDayId, activeRoundId, chainLengthLimit, commentActiveOverrides,
+        reviews: reviews.map(r => ({ ...r })),
+      };
+      const stateWs = XLSX.utils.aoa_to_sheet([
+        ["MatchOps Session Data — do not edit this sheet"],
+        [JSON.stringify(statePayload)],
+      ]);
+      XLSX.utils.book_append_sheet(wb, stateWs, "_MATCHOPS_STATE_");
+
+      const date = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `matchops-session-${date}.xlsx`);
+      toast.success("Session exported — open in Excel to view all days");
+    } catch (err) {
+      toast.error("Export failed: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const masterImportFileRef = useRef<HTMLInputElement>(null);
+
+  const handleMasterImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const wb = XLSX.read(arrayBuffer, { type: "array" });
+      const stateSheet = wb.Sheets["_MATCHOPS_STATE_"];
+      if (!stateSheet) {
+        toast.error("Not a MatchOps session file — missing state sheet.");
+        return;
+      }
+      const rows = XLSX.utils.sheet_to_json<string[]>(stateSheet, { header: 1 });
+      const jsonStr = (rows[1] as any)?.[0] as string | undefined;
+      if (!jsonStr) {
+        toast.error("Could not read session data from this file.");
+        return;
+      }
+      const payload = JSON.parse(jsonStr);
+      await idbSaveState({
+        days: payload.days,
+        actives: payload.actives,
+        activeDayId: payload.activeDayId,
+        activeRoundId: payload.activeRoundId,
+        chainLengthLimit: payload.chainLengthLimit,
+        commentActiveOverrides: payload.commentActiveOverrides ?? {},
+      });
+      if (Array.isArray(payload.reviews)) {
+        for (const r of payload.reviews) {
+          await idbUpsertReview({
+            id: r.id, pnmId: r.pnmId, activeId: r.activeId,
+            activeName: r.activeName, pnmName: r.pnmName,
+            stars: r.stars, note: r.note,
+          });
+        }
+      }
+      toast.success("Session imported — reloading…");
+      setTimeout(() => window.location.reload(), 800);
+    } catch (err) {
+      toast.error("Import failed: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
   const activeSummary = useMemo(() => {
     const conversations: Record<string, { pnmName: string; roundName: string }[]> = {};
     actives.forEach(a => { conversations[a.id] = []; });
@@ -2279,8 +2395,19 @@ export default function Dashboard() {
 
                   <Button variant="outline" size="sm" className={`h-10 text-[11px] rounded-none w-full bg-green-50/95 hover:bg-green-100 border-green-200 text-green-700 shadow-[0_12px_24px_-22px_rgba(34,197,94,0.35)] ${isToolsMenuOpen ? 'justify-start px-3.5' : 'justify-center px-0'}`} onClick={exportToCSV} data-testid="button-export-csv">
                     <Download className={`w-3 h-3 ${isToolsMenuOpen ? 'mr-2' : ''}`} />
-                    {isToolsMenuOpen ? 'Export CSV' : null}
+                    {isToolsMenuOpen ? 'Export Round CSV' : null}
                   </Button>
+
+                  <Button variant="outline" size="sm" className={`h-10 text-[11px] rounded-none w-full bg-sky-50/95 hover:bg-sky-100 border-sky-300 text-sky-700 font-semibold shadow-[0_12px_24px_-22px_rgba(14,165,233,0.35)] ${isToolsMenuOpen ? 'justify-start px-3.5' : 'justify-center px-0'}`} onClick={handleMasterExport} data-testid="button-master-export">
+                    <Download className={`w-3 h-3 ${isToolsMenuOpen ? 'mr-2' : ''}`} />
+                    {isToolsMenuOpen ? 'Export All Days (.xlsx)' : null}
+                  </Button>
+
+                  <Button variant="outline" size="sm" className={`h-10 text-[11px] rounded-none w-full bg-amber-50/95 hover:bg-amber-100 border-amber-300 text-amber-700 font-semibold shadow-[0_12px_24px_-22px_rgba(245,158,11,0.35)] ${isToolsMenuOpen ? 'justify-start px-3.5' : 'justify-center px-0'}`} onClick={() => masterImportFileRef.current?.click()} data-testid="button-master-import">
+                    <Upload className={`w-3 h-3 ${isToolsMenuOpen ? 'mr-2' : ''}`} />
+                    {isToolsMenuOpen ? 'Import Session (.xlsx)' : null}
+                  </Button>
+                  <input ref={masterImportFileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleMasterImport} data-testid="input-master-import-file" />
 
                   <Dialog open={isBumpChainsOpen} onOpenChange={setIsBumpChainsOpen}>
                     <DialogTrigger asChild>

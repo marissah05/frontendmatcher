@@ -400,9 +400,14 @@ function ActiveRankListView({ actives, reviews, days }: { actives: Active[]; rev
                                 .map(r => (
                                   <div key={r.id} className="flex items-start gap-3 py-1.5 px-3 bg-white border border-slate-100 rounded">
                                     <div className="flex-1 min-w-0">
-                                      <span className="font-semibold text-slate-700 text-[11px]">
-                                        {mode === "pnms" ? r.activeName : r.pnmName}
-                                      </span>
+                                      {mode === "pnms" ? (
+                                        <span className="font-semibold text-slate-700 text-[11px]">{r.activeName}</span>
+                                      ) : (
+                                        <span className="flex flex-col">
+                                          <span className="font-semibold text-slate-700 text-[11px]">{r.pnmName}</span>
+                                          <span className="text-[9px] text-slate-400 font-mono leading-none">ID: {pnmIdNumberMap.get(r.pnmName) ?? "—"}</span>
+                                        </span>
+                                      )}
                                       {r.note && <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">{r.note}</p>}
                                     </div>
                                     <div className="flex items-center gap-1.5 shrink-0">
@@ -643,7 +648,10 @@ function ReviewsTab({
                 data-testid={`btn-expand-pnm-${pnm.id}`}
               >
                 <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
-                <span className="flex-1 text-[11px] font-semibold text-slate-800 truncate">{pnm.name}</span>
+                <span className="flex-1 min-w-0 flex flex-col truncate">
+                  <span className="text-[11px] font-semibold text-slate-800 truncate">{pnm.name}</span>
+                  <span className="text-[9px] text-slate-400 font-mono leading-none">ID: {pnm.idNumber}</span>
+                </span>
                 {avgStars !== null ? (
                   <span className="flex items-center gap-0.5 shrink-0" data-testid={`text-avg-stars-${pnm.id}`}>
                     {[1,2,3,4,5].map(s => (
@@ -2171,15 +2179,15 @@ export default function Dashboard() {
   };
 
   const activeSummary = useMemo(() => {
-    const conversations: Record<string, { pnmName: string; roundName: string }[]> = {};
+    const conversations: Record<string, { pnmName: string; pnmIdNumber: string; roundName: string }[]> = {};
     actives.forEach(a => { conversations[a.id] = []; });
     rounds.forEach(round => {
       round.pnms.forEach(pnm => {
         if (pnm.matchedWith && conversations[pnm.matchedWith] !== undefined) {
-          conversations[pnm.matchedWith].push({ pnmName: pnm.name, roundName: round.name });
+          conversations[pnm.matchedWith].push({ pnmName: pnm.name, pnmIdNumber: pnm.idNumber, roundName: round.name });
         }
         if (pnm.secondMatch && conversations[pnm.secondMatch] !== undefined) {
-          conversations[pnm.secondMatch].push({ pnmName: pnm.name, roundName: round.name });
+          conversations[pnm.secondMatch].push({ pnmName: pnm.name, pnmIdNumber: pnm.idNumber, roundName: round.name });
         }
       });
     });
@@ -2660,6 +2668,7 @@ export default function Dashboard() {
                                     <div key={pnm.id} className="bg-white border border-orange-100 p-3 space-y-2">
                                       <div className="text-[11px] text-slate-600">
                                         <span className="font-semibold text-slate-800">{pnm.name}</span>
+                                        <span className="text-[9px] font-mono text-slate-400 ml-1.5">ID: {pnm.idNumber}</span>
                                         <span className="text-slate-400"> · M1: </span>
                                         <span className="font-medium text-sky-700">{m1Name}</span>
                                         <span className="text-slate-400"> · current M2: </span>
@@ -2986,7 +2995,10 @@ export default function Dashboard() {
                               <div className="flex flex-wrap gap-1">
                                 {a.pnms.map((p, i) => (
                                   <span key={i} className="inline-flex items-center gap-1 text-[10px] bg-slate-100 px-1.5 py-0.5 text-slate-700" data-testid={`chip-pnm-${a.id}-${i}`}>
-                                    {p.pnmName}
+                                    <span className="flex flex-col leading-tight">
+                                      <span>{p.pnmName}</span>
+                                      <span className="text-[8px] font-mono text-slate-400">ID: {p.pnmIdNumber}</span>
+                                    </span>
                                     <span className="text-slate-400 text-[9px]">· {p.roundName}</span>
                                   </span>
                                 ))}

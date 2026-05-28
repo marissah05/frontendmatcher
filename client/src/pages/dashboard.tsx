@@ -887,6 +887,8 @@ export default function Dashboard() {
             idNumber: p.idNumber,
             matchedWith: p.matchedWith ?? undefined,
             secondMatch: p.secondMatch ?? undefined,
+            lockedM1: p.lockedM1 ?? false,
+            lockedM2: p.lockedM2 ?? false,
             status: (p.matchedWith || p.secondMatch) ? 'matched' : 'unmatched',
           } as PNM)),
         }));
@@ -1341,9 +1343,9 @@ export default function Dashboard() {
     return newArray;
   };
 
-  const buildAutoMatchAssignments = (mode: 'random' | 'balanced') => {
+  const buildAutoMatchAssignments = (mode: 'random' | 'balanced', activesPool = actives) => {
     const podSize = Math.max(2, chainLengthLimit);
-    const shuffledActives = shuffleArray([...actives]);
+    const shuffledActives = shuffleArray([...activesPool]);
     const pods: Active[][] = [];
 
     for (let i = 0; i < shuffledActives.length; i += podSize) {
@@ -1391,30 +1393,54 @@ export default function Dashboard() {
     }
 
     pushUndoState();
-    const assignments = buildAutoMatchAssignments(mode);
+
+    // Collect actives pinned to locked slots — exclude them from the pool
+    const lockedActiveIds = new Set<string>();
+    for (const pnm of activeRound.pnms) {
+      if (pnm.lockedM1 && pnm.matchedWith) lockedActiveIds.add(pnm.matchedWith);
+      if (pnm.lockedM2 && pnm.secondMatch) lockedActiveIds.add(pnm.secondMatch);
+    }
+    const availableActives = actives.filter(a => !lockedActiveIds.has(a.id));
+    const assignments = buildAutoMatchAssignments(mode, availableActives);
 
     setRounds(prev => prev.map(round => {
-      if (round.id !== activeRoundId) {
-        return round;
-      }
-
+      if (round.id !== activeRoundId) return round;
+      let idx = 0;
       return {
         ...round,
-        pnms: round.pnms.map((pnm, index) => {
-          const assignment = assignments[index];
+        pnms: round.pnms.map(pnm => {
+          const m1Locked = pnm.lockedM1 && !!pnm.matchedWith;
+          const m2Locked = pnm.lockedM2 && !!pnm.secondMatch;
+          if (m1Locked && m2Locked) return pnm; // fully locked — skip entirely
+          const assignment = assignments[idx++];
+          const newM1 = m1Locked ? pnm.matchedWith : assignment?.matchedWith;
+          const newM2 = m2Locked ? pnm.secondMatch : assignment?.secondMatch;
           return {
             ...pnm,
-            matchedWith: assignment?.matchedWith,
-            secondMatch: assignment?.secondMatch,
-            status: assignment?.matchedWith || assignment?.secondMatch ? 'matched' as const : 'unmatched' as const,
+            matchedWith: newM1,
+            secondMatch: newM2,
+            status: newM1 || newM2 ? 'matched' as const : 'unmatched' as const,
           };
         }),
       };
     }));
 
-    toast.success(mode === 'balanced' ? "Balanced auto-match complete" : "Random auto-match complete", {
-      className: "rounded-none text-xs font-bold bg-purple-50 text-purple-700 border-purple-200"
-    });
+    const lockedCount = activeRound.pnms.filter(p => (p.lockedM1 && p.matchedWith) || (p.lockedM2 && p.secondMatch)).length;
+    toast.success(
+      `${mode === 'balanced' ? "Balanced" : "Random"} auto-match complete${lockedCount > 0 ? ` · ${lockedCount} locked slot${lockedCount !== 1 ? 's' : ''} preserved` : ""}`,
+      { className: "rounded-none text-xs font-bold bg-purple-50 text-purple-700 border-purple-200" }
+    );
+  };
+
+  const handleToggleLock = (pnmId: string, slot: 1 | 2) => {
+    const key = slot === 1 ? 'lockedM1' : 'lockedM2';
+    setRounds(prev => prev.map(round => {
+      if (round.id !== activeRoundId) return round;
+      return {
+        ...round,
+        pnms: round.pnms.map(p => p.id !== pnmId ? p : { ...p, [key]: !p[key] }),
+      };
+    }));
   };
 
   const handleActiveImport = () => {
@@ -1694,7 +1720,11 @@ export default function Dashboard() {
         ...r,
         pnms: r.pnms.map(p => {
           if (p.id !== pnmId) return p;
-          const updated = { ...p, [slot === 1 ? 'matchedWith' : 'secondMatch']: undefined };
+          const updated = {
+            ...p,
+            [slot === 1 ? 'matchedWith' : 'secondMatch']: undefined,
+            [slot === 1 ? 'lockedM1' : 'lockedM2']: false,
+          };
           updated.status = (updated.matchedWith || updated.secondMatch) ? 'matched' : 'unmatched';
           return updated;
         })
@@ -2910,6 +2940,7 @@ export default function Dashboard() {
                               onUnmatch={handleUnmatch}
                               onClearBoth={handleClearBoth}
                               onDelete={handleDeletePnm}
+                              onToggleLock={handleToggleLock}
                               onHoverStart={() => setHoveredPnmId(pnm.id)}
                               onHoverEnd={() => setHoveredPnmId(current => current === pnm.id ? null : current)}
                               isHighlighted={isHighlighted}

@@ -5,7 +5,7 @@ import PNMDropZone from "./PNMDropZone";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Trash2, GripVertical, X } from "lucide-react";
+import { Trash2, GripVertical, X, Lock, LockOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SortablePNMRowProps {
@@ -16,6 +16,7 @@ interface SortablePNMRowProps {
   onUnmatch: (pnmId: string, slot: 1 | 2) => void;
   onClearBoth: (pnmId: string) => void;
   onDelete: (pnmId: string) => void;
+  onToggleLock: (pnmId: string, slot: 1 | 2) => void;
   onHoverStart?: () => void;
   onHoverEnd?: () => void;
   isHighlighted?: boolean;
@@ -36,7 +37,7 @@ interface SortablePNMRowProps {
   isBump2Enabled?: boolean;
 }
 
-export default function SortablePNMRow({ pnm, pnms, actives, rowIndex, onUnmatch, onClearBoth, onDelete, onHoverStart, onHoverEnd, isHighlighted, isDimmed, dropPreview1, dropPreview2, highlightedActiveIds, isBump2Enabled = true }: SortablePNMRowProps) {
+export default function SortablePNMRow({ pnm, pnms, actives, rowIndex, onUnmatch, onClearBoth, onDelete, onToggleLock, onHoverStart, onHoverEnd, isHighlighted, isDimmed, dropPreview1, dropPreview2, highlightedActiveIds, isBump2Enabled = true }: SortablePNMRowProps) {
   const {
     attributes,
     listeners,
@@ -70,6 +71,27 @@ export default function SortablePNMRow({ pnm, pnms, actives, rowIndex, onUnmatch
       return <Badge className="bg-amber-400 hover:bg-amber-500 text-white border-none rounded-none text-[9px] h-5 px-1.5 uppercase font-bold text-nowrap">Missing 1</Badge>;
     }
     return <Badge className="bg-red-500 hover:bg-red-600 text-white border-none rounded-none text-[9px] h-5 px-1.5 uppercase font-bold text-nowrap">Unmatched</Badge>;
+  };
+
+  const LockButton = ({ slot, hasValue, isLocked }: { slot: 1 | 2; hasValue: boolean; isLocked?: boolean }) => {
+    if (!hasValue) return <div className="w-5 shrink-0" />;
+    return (
+      <button
+        onClick={e => { e.stopPropagation(); onToggleLock(pnm.id, slot); }}
+        title={isLocked ? "Locked — auto-fill won't change this. Click to unlock." : "Unlocked — auto-fill may replace this. Click to lock."}
+        data-testid={`button-lock-m${slot}-${pnm.id}`}
+        className={cn(
+          "shrink-0 w-5 h-5 flex items-center justify-center rounded-none transition-all",
+          isLocked
+            ? "text-amber-500 hover:text-amber-700"
+            : "text-slate-200 hover:text-slate-500 opacity-0 group-hover:opacity-100"
+        )}
+      >
+        {isLocked
+          ? <Lock className="h-3 w-3" />
+          : <LockOpen className="h-3 w-3" />}
+      </button>
+    );
   };
 
   return (
@@ -108,29 +130,35 @@ export default function SortablePNMRow({ pnm, pnms, actives, rowIndex, onUnmatch
         </div>
       </TableCell>
       <TableCell className="py-0.5">
-        <PNMDropZone
-          pnm={pnm}
-          slot={1}
-          matchedActiveName={actives.find(a => a.id === pnm.matchedWith)?.name}
-          onUnmatch={onUnmatch}
-          isDuplicate={hasDuplicate1}
-          isHighlighted={!!pnm.matchedWith && highlightedActiveIds.has(pnm.matchedWith)}
-          isDimmed={isDimmed}
-          dropPreview={dropPreview1}
-        />
+        <div className="flex items-center gap-0.5">
+          <PNMDropZone
+            pnm={pnm}
+            slot={1}
+            matchedActiveName={actives.find(a => a.id === pnm.matchedWith)?.name}
+            onUnmatch={onUnmatch}
+            isDuplicate={hasDuplicate1}
+            isHighlighted={!!pnm.matchedWith && highlightedActiveIds.has(pnm.matchedWith)}
+            isDimmed={isDimmed}
+            dropPreview={dropPreview1}
+          />
+          <LockButton slot={1} hasValue={!!pnm.matchedWith} isLocked={pnm.lockedM1} />
+        </div>
       </TableCell>
       {isBump2Enabled ? (
         <TableCell className="py-0.5">
-          <PNMDropZone
-            pnm={pnm}
-            slot={2}
-            matchedActiveName={actives.find(a => a.id === pnm.secondMatch)?.name}
-            onUnmatch={onUnmatch}
-            isDuplicate={hasDuplicate2}
-            isHighlighted={!!pnm.secondMatch && highlightedActiveIds.has(pnm.secondMatch)}
-            isDimmed={isDimmed}
-            dropPreview={dropPreview2}
-          />
+          <div className="flex items-center gap-0.5">
+            <PNMDropZone
+              pnm={pnm}
+              slot={2}
+              matchedActiveName={actives.find(a => a.id === pnm.secondMatch)?.name}
+              onUnmatch={onUnmatch}
+              isDuplicate={hasDuplicate2}
+              isHighlighted={!!pnm.secondMatch && highlightedActiveIds.has(pnm.secondMatch)}
+              isDimmed={isDimmed}
+              dropPreview={dropPreview2}
+            />
+            <LockButton slot={2} hasValue={!!pnm.secondMatch} isLocked={pnm.lockedM2} />
+          </div>
         </TableCell>
       ) : (
         <TableCell className="py-0.5 text-slate-200 text-[10px] text-center select-none">—</TableCell>

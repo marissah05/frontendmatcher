@@ -16,9 +16,11 @@ interface PNMDropZoneProps {
     isOverLimit: boolean;
     wouldCycle: boolean;
   };
+  isClickAssignable?: boolean;
+  onClickAssign?: () => void;
 }
 
-export default function PNMDropZone({ pnm, slot, matchedActiveName, onUnmatch, isDuplicate, isHighlighted, isDimmed, dropPreview }: PNMDropZoneProps) {
+export default function PNMDropZone({ pnm, slot, matchedActiveName, onUnmatch, isDuplicate, isHighlighted, isDimmed, dropPreview, isClickAssignable, onClickAssign }: PNMDropZoneProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: `drop-${pnm.id}-${slot}`,
     data: { pnm, slot },
@@ -53,6 +55,21 @@ export default function PNMDropZone({ pnm, slot, matchedActiveName, onUnmatch, i
   }
 
   const blocked = isOver && (dropPreview?.wouldCycle || dropPreview?.alreadyUsedInSlot);
+
+  if (isClickAssignable) {
+    return (
+      <div
+        onClick={onClickAssign}
+        className={cn(
+          "h-6 border-2 border-dashed flex items-center justify-center text-[10px] px-2 transition-colors min-w-[100px] rounded-none cursor-pointer",
+          "border-green-400 bg-green-50/80 text-green-700 hover:bg-green-100 hover:border-green-500 animate-pulse"
+        )}
+        data-testid={`dropzone-slot-${slot}-${pnm.id}`}
+      >
+        Assign here
+      </div>
+    );
+  }
 
   return (
     <div

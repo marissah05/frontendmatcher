@@ -841,7 +841,7 @@ export default function Dashboard() {
   const [commentActiveOverrides, setCommentActiveOverrides] = useState<Record<string, string[]>>({});
   const [statusFilters, setStatusFilters] = useState<Set<string>>(new Set());
   const [assignMode, setAssignMode] = useState<'drag' | 'click'>('drag');
-  const [selectedPnmForAssign, setSelectedPnmForAssign] = useState<string | null>(null);
+  const [selectedActiveForAssign, setSelectedActiveForAssign] = useState<{ id: string; slot: 1 | 2 } | null>(null);
 
   const rounds = useMemo(() => days.find(d => d.id === activeDayId)?.rounds ?? [], [days, activeDayId]);
 
@@ -1766,11 +1766,11 @@ export default function Dashboard() {
     });
   };
 
-  const handleClickAssign = (activeId: string, slot: 1 | 2) => {
-    if (!selectedPnmForAssign) return;
-    const realActiveId = activeId.replace(/-[12]$/, '');
+  const handleClickAssign = (pnmId: string) => {
+    if (!selectedActiveForAssign) return;
+    const { id: activeId, slot } = selectedActiveForAssign;
     const slotKey = slot === 1 ? 'matchedWith' : 'secondMatch';
-    const alreadyUsedInSlot = activeRound.pnms.some(p => p.id !== selectedPnmForAssign && p[slotKey] === realActiveId);
+    const alreadyUsedInSlot = activeRound.pnms.some(p => p.id !== pnmId && p[slotKey] === activeId);
     if (alreadyUsedInSlot) {
       toast.error(`This active is already used as Bump ${slot} by another PNM.`, { className: "rounded-none text-xs font-bold", duration: 3000 });
       return;
@@ -1781,12 +1781,12 @@ export default function Dashboard() {
       return {
         ...r,
         pnms: r.pnms.map(p => {
-          if (p.id !== selectedPnmForAssign) return p;
-          return { ...p, status: 'matched', [slotKey]: realActiveId };
+          if (p.id !== pnmId) return p;
+          return { ...p, status: 'matched', [slotKey]: activeId };
         }),
       };
     }));
-    setSelectedPnmForAssign(null);
+    setSelectedActiveForAssign(null);
   };
 
   const generateChains = () => chainAnalysis.chains.map(chain => ({
@@ -2919,7 +2919,7 @@ export default function Dashboard() {
                 </div>
                 <Badge variant="outline" className="text-[10px] h-6 px-2 rounded-none border-slate-200 bg-slate-50/90 text-slate-600">{activeRound.pnms.length} PNMs</Badge>
                 <button
-                  onClick={() => { setAssignMode(m => m === 'drag' ? 'click' : 'drag'); setSelectedPnmForAssign(null); }}
+                  onClick={() => { setAssignMode(m => m === 'drag' ? 'click' : 'drag'); setSelectedActiveForAssign(null); }}
                   data-testid="button-toggle-assign-mode"
                   title={assignMode === 'drag' ? 'Switch to Click-to-Assign mode' : 'Switch back to Drag-and-Drop mode'}
                   className={`h-8 px-2.5 border text-[10px] font-bold uppercase tracking-wider rounded-none transition-colors flex items-center gap-1.5 ${assignMode === 'click' ? 'bg-violet-100 border-violet-300 text-violet-700 hover:bg-violet-200' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700'}`}
@@ -3014,8 +3014,8 @@ export default function Dashboard() {
                               highlightedActiveIds={highlightedActiveIds}
                               isBump2Enabled={isBump2Enabled}
                               assignMode={assignMode}
-                              isSelectedForAssign={selectedPnmForAssign === pnm.id}
-                              onSelectForAssign={id => setSelectedPnmForAssign(prev => prev === id ? null : id)}
+                              selectedActiveForAssign={selectedActiveForAssign}
+                              onClickAssignToSlot={() => handleClickAssign(pnm.id)}
                             />
                           );
                         })}
@@ -3054,8 +3054,8 @@ export default function Dashboard() {
                               highlightedActiveIds={highlightedActiveIds}
                               isBump2Enabled={isBump2Enabled}
                               assignMode={assignMode}
-                              isSelectedForAssign={selectedPnmForAssign === pnm.id}
-                              onSelectForAssign={id => setSelectedPnmForAssign(prev => prev === id ? null : id)}
+                              selectedActiveForAssign={selectedActiveForAssign}
+                              onClickAssignToSlot={() => handleClickAssign(pnm.id)}
                             />
                           );
                         })}
@@ -3179,12 +3179,12 @@ export default function Dashboard() {
               <div className="flex items-center justify-between mb-3 px-0.5 shrink-0">
                 <div>
                   <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">Active Pool</h3>
-                  {assignMode === 'click' && selectedPnmForAssign ? (
-                    <p className="text-[10px] text-violet-600 font-semibold mt-0.5">
-                      Click an active → assigns to {activeRound.pnms.find(p => p.id === selectedPnmForAssign)?.name}
+                  {assignMode === 'click' && selectedActiveForAssign ? (
+                    <p className="text-[10px] text-green-600 font-semibold mt-0.5">
+                      Now click a Slot {selectedActiveForAssign.slot} box in the table
                     </p>
                   ) : (
-                    <p className="text-[10px] text-slate-400 mt-0.5">{assignMode === 'click' ? 'Click a PNM row to select it.' : 'Right-click an active to edit the pool.'}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{assignMode === 'click' ? 'Click an active to select it.' : 'Right-click an active to edit the pool.'}</p>
                   )}
                 </div>
                 <div className="flex gap-2 items-center">
@@ -3230,8 +3230,8 @@ export default function Dashboard() {
                               handleDeleteActive(active.id);
                             }}
                             assignMode={assignMode}
-                            hasSelectedPnm={!!selectedPnmForAssign}
-                            onClickAssign={() => handleClickAssign(`${active.id}-1`, 1)}
+                            isSelectedForAssign={selectedActiveForAssign?.id === active.id && selectedActiveForAssign?.slot === 1}
+                            onSelectForAssign={() => setSelectedActiveForAssign(prev => prev?.id === active.id && prev?.slot === 1 ? null : { id: active.id, slot: 1 })}
                           />
                         );
                       })}
@@ -3270,8 +3270,8 @@ export default function Dashboard() {
                                   handleDeleteActive(active.id);
                                 }}
                                 assignMode={assignMode}
-                                hasSelectedPnm={!!selectedPnmForAssign}
-                                onClickAssign={() => handleClickAssign(`${active.id}-2`, 2)}
+                                isSelectedForAssign={selectedActiveForAssign?.id === active.id && selectedActiveForAssign?.slot === 2}
+                                onSelectForAssign={() => setSelectedActiveForAssign(prev => prev?.id === active.id && prev?.slot === 2 ? null : { id: active.id, slot: 2 })}
                               />
                             );
                           })}

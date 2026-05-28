@@ -35,15 +35,15 @@ interface SortablePNMRowProps {
   highlightedActiveIds: Set<string>;
   isBump2Enabled?: boolean;
   assignMode?: 'drag' | 'click';
-  isSelectedForAssign?: boolean;
-  onSelectForAssign?: (id: string) => void;
+  selectedActiveForAssign?: { id: string; slot: 1 | 2 } | null;
+  onClickAssignToSlot?: (slot: 1 | 2) => void;
 }
 
 export default function SortablePNMRow({
   pnm, pnms, actives, rowIndex, onUnmatch, onClearBoth, onDelete,
   onHoverStart, onHoverEnd, isHighlighted, isDimmed, dropPreview1, dropPreview2,
   highlightedActiveIds, isBump2Enabled = true,
-  assignMode = 'drag', isSelectedForAssign = false, onSelectForAssign,
+  assignMode = 'drag', selectedActiveForAssign, onClickAssignToSlot,
 }: SortablePNMRowProps) {
   const {
     attributes,
@@ -67,6 +67,9 @@ export default function SortablePNMRow({
   const hasDuplicate2 = isBump2Enabled && !!pnm.secondMatch && pnms.some(otherPnm => otherPnm.id !== pnm.id && otherPnm.secondMatch === pnm.secondMatch);
   const hasDuplicate = hasDuplicate1 || hasDuplicate2;
 
+  const slot1Assignable = assignMode === 'click' && selectedActiveForAssign?.slot === 1 && !pnm.matchedWith;
+  const slot2Assignable = assignMode === 'click' && selectedActiveForAssign?.slot === 2 && !pnm.secondMatch;
+
   const getStatusBadge = () => {
     if (hasDuplicate) {
       return <Badge className="bg-red-500 hover:bg-red-600 text-white border-none rounded-none text-[9px] h-5 px-1.5 uppercase font-bold">Conflict</Badge>;
@@ -86,17 +89,14 @@ export default function SortablePNMRow({
       style={style}
       onMouseEnter={onHoverStart}
       onMouseLeave={onHoverEnd}
-      onClick={assignMode === 'click' ? () => onSelectForAssign?.(pnm.id) : undefined}
       data-testid={`row-pnm-${pnm.id}`}
       className={cn(
         "h-10 border-b border-b-slate-100/90 transition-all relative group",
         rowIndex % 2 === 1 ? "bg-violet-50/45" : "bg-white/80",
-        !isDragging && !isHighlighted && !isSelectedForAssign && "hover:bg-slate-100/85",
+        !isDragging && !isHighlighted && "hover:bg-slate-100/85",
         isDragging && "z-50 bg-white shadow-[0_18px_36px_-26px_rgba(15,23,42,0.45)] opacity-85",
-        isHighlighted && !isSelectedForAssign && "bg-slate-100/90 shadow-[inset_3px_0_0_0_rgb(15_23_42)]",
+        isHighlighted && "bg-slate-100/90 shadow-[inset_3px_0_0_0_rgb(15_23_42)]",
         isDimmed && !isDragging && "opacity-45",
-        isSelectedForAssign && "ring-2 ring-inset ring-violet-500 bg-violet-50/90 shadow-[inset_3px_0_0_0_rgb(124_58_237)]",
-        assignMode === 'click' && !isSelectedForAssign && "cursor-pointer",
       )}
     >
       <TableCell className="py-0.5 w-8 p-0">
@@ -105,7 +105,6 @@ export default function SortablePNMRow({
           {...listeners}
           className="cursor-grab active:cursor-grabbing p-2 text-slate-300 hover:text-slate-600 transition-colors"
           data-testid={`button-drag-pnm-${pnm.id}`}
-          onClick={e => e.stopPropagation()}
         >
           <GripVertical className="h-3 w-3" />
         </div>
@@ -129,6 +128,8 @@ export default function SortablePNMRow({
           isHighlighted={!!pnm.matchedWith && highlightedActiveIds.has(pnm.matchedWith)}
           isDimmed={isDimmed}
           dropPreview={dropPreview1}
+          isClickAssignable={slot1Assignable}
+          onClickAssign={() => onClickAssignToSlot?.(1)}
         />
       </TableCell>
       {isBump2Enabled ? (
@@ -142,6 +143,8 @@ export default function SortablePNMRow({
             isHighlighted={!!pnm.secondMatch && highlightedActiveIds.has(pnm.secondMatch)}
             isDimmed={isDimmed}
             dropPreview={dropPreview2}
+            isClickAssignable={slot2Assignable}
+            onClickAssign={() => onClickAssignToSlot?.(2)}
           />
         </TableCell>
       ) : (

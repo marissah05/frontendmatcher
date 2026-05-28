@@ -348,7 +348,7 @@ function ActiveRankListView({ actives, reviews, days }: { actives: Active[]; rev
                   <th className="py-2 px-4 text-left text-[9px] font-bold uppercase tracking-wider text-slate-400">Avg Score</th>
                   {mode === "actives" && <th className="py-2 px-4 text-center text-[9px] font-bold uppercase tracking-wider text-slate-400 w-16">Rounds</th>}
                   <th className="py-2 px-4 text-center text-[9px] font-bold uppercase tracking-wider text-slate-400 w-20">Reviews</th>
-                  <th className="py-2 px-4 text-center text-[9px] font-bold uppercase tracking-wider text-slate-400 w-16">Total Pts</th>
+                  {mode === "pnms" && <th className="py-2 px-4 text-center text-[9px] font-bold uppercase tracking-wider text-slate-400 w-16">Total Pts</th>}
                   <th className="py-2 px-3 w-8" />
                 </tr>
               </thead>
@@ -384,12 +384,12 @@ function ActiveRankListView({ actives, reviews, days }: { actives: Active[]; rev
                           </td>
                         )}
                         <td className="py-2.5 px-4 text-center text-slate-500">{entry.count}</td>
-                        <td className="py-2.5 px-4 text-center font-semibold text-slate-600">{entry.total}</td>
+                        {mode === "pnms" && <td className="py-2.5 px-4 text-center font-semibold text-slate-600">{entry.total}</td>}
                         <td className="py-2.5 px-3 text-center text-slate-300 text-[10px]">{isExpanded ? "▲" : "▼"}</td>
                       </tr>
                       {isExpanded && (
                         <tr className={`border-b border-slate-100 ${expandRow}`}>
-                          <td colSpan={mode === "actives" ? 7 : 6} className="px-6 py-3">
+                          <td colSpan={mode === "actives" ? 6 : 7} className="px-6 py-3">
                             <div className={`text-[9px] font-bold uppercase tracking-wider mb-2 ${labelColor}`}>
                               Score Breakdown — {entry.count} review{entry.count !== 1 ? "s" : ""}
                             </div>

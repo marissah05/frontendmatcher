@@ -840,7 +840,6 @@ export default function Dashboard() {
   const [specialView, setSpecialView] = useState<null | "master" | "rank">(null);
   const [commentActiveOverrides, setCommentActiveOverrides] = useState<Record<string, string[]>>({});
   const [statusFilters, setStatusFilters] = useState<Set<string>>(new Set());
-  const [selectedPnmIds, setSelectedPnmIds] = useState<Set<string>>(new Set());
   const [assignMode, setAssignMode] = useState<'drag' | 'click'>('drag');
   const [selectedPnmForAssign, setSelectedPnmForAssign] = useState<string | null>(null);
 
@@ -891,8 +890,6 @@ export default function Dashboard() {
             idNumber: p.idNumber,
             matchedWith: p.matchedWith ?? undefined,
             secondMatch: p.secondMatch ?? undefined,
-            lockedM1: p.lockedM1 ?? false,
-            lockedM2: p.lockedM2 ?? false,
             status: (p.matchedWith || p.secondMatch) ? 'matched' : 'unmatched',
           } as PNM)),
         }));
@@ -1398,14 +1395,7 @@ export default function Dashboard() {
 
     pushUndoState();
 
-    // Collect actives pinned to locked slots — exclude them from the pool
-    const lockedActiveIds = new Set<string>();
-    for (const pnm of activeRound.pnms) {
-      if (pnm.lockedM1 && pnm.matchedWith) lockedActiveIds.add(pnm.matchedWith);
-      if (pnm.lockedM2 && pnm.secondMatch) lockedActiveIds.add(pnm.secondMatch);
-    }
-    const availableActives = actives.filter(a => !lockedActiveIds.has(a.id));
-    const assignments = buildAutoMatchAssignments(mode, availableActives);
+    const assignments = buildAutoMatchAssignments(mode, actives);
 
     setRounds(prev => prev.map(round => {
       if (round.id !== activeRoundId) return round;
@@ -1413,38 +1403,21 @@ export default function Dashboard() {
       return {
         ...round,
         pnms: round.pnms.map(pnm => {
-          const m1Locked = pnm.lockedM1 && !!pnm.matchedWith;
-          const m2Locked = pnm.lockedM2 && !!pnm.secondMatch;
-          if (m1Locked && m2Locked) return pnm; // fully locked — skip entirely
           const assignment = assignments[idx++];
-          const newM1 = m1Locked ? pnm.matchedWith : assignment?.matchedWith;
-          const newM2 = m2Locked ? pnm.secondMatch : assignment?.secondMatch;
           return {
             ...pnm,
-            matchedWith: newM1,
-            secondMatch: newM2,
-            status: newM1 || newM2 ? 'matched' as const : 'unmatched' as const,
+            matchedWith: assignment?.matchedWith,
+            secondMatch: assignment?.secondMatch,
+            status: assignment?.matchedWith || assignment?.secondMatch ? 'matched' as const : 'unmatched' as const,
           };
         }),
       };
     }));
 
-    const lockedCount = activeRound.pnms.filter(p => (p.lockedM1 && p.matchedWith) || (p.lockedM2 && p.secondMatch)).length;
     toast.success(
-      `${mode === 'balanced' ? "Balanced" : "Random"} auto-match complete${lockedCount > 0 ? ` · ${lockedCount} locked slot${lockedCount !== 1 ? 's' : ''} preserved` : ""}`,
+      `${mode === 'balanced' ? "Balanced" : "Random"} auto-match complete`,
       { className: "rounded-none text-xs font-bold bg-purple-50 text-purple-700 border-purple-200" }
     );
-  };
-
-  const handleToggleLock = (pnmId: string, slot: 1 | 2) => {
-    const key = slot === 1 ? 'lockedM1' : 'lockedM2';
-    setRounds(prev => prev.map(round => {
-      if (round.id !== activeRoundId) return round;
-      return {
-        ...round,
-        pnms: round.pnms.map(p => p.id !== pnmId ? p : { ...p, [key]: !p[key] }),
-      };
-    }));
   };
 
   const handleActiveImport = () => {
@@ -1727,7 +1700,6 @@ export default function Dashboard() {
           const updated = {
             ...p,
             [slot === 1 ? 'matchedWith' : 'secondMatch']: undefined,
-            [slot === 1 ? 'lockedM1' : 'lockedM2']: false,
           };
           updated.status = (updated.matchedWith || updated.secondMatch) ? 'matched' : 'unmatched';
           return updated;
@@ -1792,31 +1764,6 @@ export default function Dashboard() {
       if (next.has(filter)) next.delete(filter); else next.add(filter);
       return next;
     });
-  };
-
-  const handleBulkLock = (action: 'lockM1' | 'lockM2' | 'lockBoth' | 'unlockM1' | 'unlockM2' | 'unlockBoth') => {
-    if (selectedPnmIds.size === 0) return;
-    pushUndoState();
-    setRounds(prev => prev.map(r => {
-      if (r.id !== activeRoundId) return r;
-      return {
-        ...r,
-        pnms: r.pnms.map(p => {
-          if (!selectedPnmIds.has(p.id)) return p;
-          const lock1 = action === 'lockM1' || action === 'lockBoth' ? true
-            : action === 'unlockM1' || action === 'unlockBoth' ? false
-            : p.lockedM1;
-          const lock2 = action === 'lockM2' || action === 'lockBoth' ? true
-            : action === 'unlockM2' || action === 'unlockBoth' ? false
-            : p.lockedM2;
-          return { ...p, lockedM1: lock1, lockedM2: lock2 };
-        }),
-      };
-    }));
-    const verb = action.startsWith('lock') ? 'Locked' : 'Unlocked';
-    const count = selectedPnmIds.size;
-    toast.success(`${verb} ${count} PNM${count !== 1 ? 's' : ''}`, { className: "rounded-none text-xs font-bold", duration: 2000 });
-    setSelectedPnmIds(new Set());
   };
 
   const handleClickAssign = (activeId: string, slot: 1 | 2) => {
@@ -2298,8 +2245,7 @@ export default function Dashboard() {
       const isFull = isBump2Enabled ? (!!p.matchedWith && !!p.secondMatch) : !!p.matchedWith;
       if (f === 'complete') return isFull;
       if (f === 'incomplete') return !isFull;
-      if (f === 'locked') return !!(p.lockedM1 || p.lockedM2);
-      if (f === 'unlocked') return !(p.lockedM1 || p.lockedM2);
+
       return false;
     });
     return {
@@ -2986,7 +2932,7 @@ export default function Dashboard() {
               {/* Filter bar */}
               <div className="px-3 py-1.5 border-b border-slate-100 flex items-center gap-1.5 bg-slate-50/60 shrink-0 flex-wrap">
                 <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400 mr-0.5">Filter</span>
-                {(['incomplete', 'complete', 'locked', 'unlocked'] as const).map(filter => (
+                {(['incomplete', 'complete'] as const).map(filter => (
                   <button
                     key={filter}
                     onClick={() => handleToggleStatusFilter(filter)}
@@ -3014,47 +2960,10 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* Bulk lock bar */}
-              {selectedPnmIds.size > 0 && (
-                <div className="px-3 py-1.5 border-b border-amber-200 flex items-center gap-1.5 bg-amber-50/80 shrink-0 flex-wrap">
-                  <span className="text-[9px] font-bold text-amber-700 mr-0.5">{selectedPnmIds.size} selected</span>
-                  {(['lockM1', 'lockM2', 'lockBoth', 'unlockM1', 'unlockM2', 'unlockBoth'] as const).map(action => (
-                    <button
-                      key={action}
-                      onClick={() => handleBulkLock(action)}
-                      data-testid={`button-bulk-${action}`}
-                      className={`h-5 px-2 text-[9px] font-bold uppercase tracking-wider border transition-colors rounded-none ${
-                        action.startsWith('lock')
-                          ? 'border-amber-300 bg-amber-100 text-amber-700 hover:bg-amber-200'
-                          : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      {action === 'lockM1' ? 'Lock M1' : action === 'lockM2' ? 'Lock M2' : action === 'lockBoth' ? 'Lock Both' : action === 'unlockM1' ? 'Unlock M1' : action === 'unlockM2' ? 'Unlock M2' : 'Unlock Both'}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => setSelectedPnmIds(new Set())}
-                    className="ml-auto h-5 px-2 text-[9px] font-bold text-slate-400 hover:text-red-500 border border-slate-200 bg-white rounded-none transition-colors"
-                    data-testid="button-clear-bulk-selection"
-                  >
-                    Clear
-                  </button>
-                </div>
-              )}
-
               <ScrollArea className="flex-1">
                 <Table className="rounded-none">
                   <TableHeader className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-md shadow-[inset_0_-1px_0_rgba(226,232,240,0.95)]">
                     <TableRow className="sticky top-0 z-20 border-b border-slate-200/90 bg-slate-50/95 hover:bg-slate-50/95">
-                      <TableHead className="w-6 py-1 h-8 bg-slate-50/95 pl-2 pr-0">
-                        <input
-                          type="checkbox"
-                          className="h-3.5 w-3.5 cursor-pointer accent-violet-600"
-                          checked={filteredPnms.length > 0 && filteredPnms.every(p => selectedPnmIds.has(p.id))}
-                          onChange={e => setSelectedPnmIds(e.target.checked ? new Set(filteredPnms.map(p => p.id)) : new Set())}
-                          data-testid="checkbox-select-all-pnms"
-                        />
-                      </TableHead>
                       <TableHead className="w-8 bg-slate-50/95"></TableHead>
                       <TableHead className="py-1 h-8 text-[10px] uppercase font-bold bg-slate-50/95">Status</TableHead>
                       <TableHead className="py-1 h-8 text-[10px] uppercase font-bold bg-slate-50/95">PNM Name & ID</TableHead>
@@ -3096,7 +3005,6 @@ export default function Dashboard() {
                               onUnmatch={handleUnmatch}
                               onClearBoth={handleClearBoth}
                               onDelete={handleDeletePnm}
-                              onToggleLock={handleToggleLock}
                               onHoverStart={() => setHoveredPnmId(pnm.id)}
                               onHoverEnd={() => setHoveredPnmId(current => current === pnm.id ? null : current)}
                               isHighlighted={isHighlighted}
@@ -3105,8 +3013,6 @@ export default function Dashboard() {
                               dropPreview2={dropWarnings.get(`${pnm.id}-2`)}
                               highlightedActiveIds={highlightedActiveIds}
                               isBump2Enabled={isBump2Enabled}
-                              isSelected={selectedPnmIds.has(pnm.id)}
-                              onSelect={(id, checked) => setSelectedPnmIds(prev => { const next = new Set(prev); checked ? next.add(id) : next.delete(id); return next; })}
                               assignMode={assignMode}
                               isSelectedForAssign={selectedPnmForAssign === pnm.id}
                               onSelectForAssign={id => setSelectedPnmForAssign(prev => prev === id ? null : id)}
@@ -3115,7 +3021,7 @@ export default function Dashboard() {
                         })}
                         {statusFilters.size > 0 && secondaryPnms.length > 0 && (
                           <TableRow className="hover:bg-transparent">
-                            <TableCell colSpan={7} className="py-1 bg-slate-100/80 border-y border-slate-200">
+                            <TableCell colSpan={6} className="py-1 bg-slate-100/80 border-y border-slate-200">
                               <div className="flex items-center gap-2 px-1">
                                 <div className="h-px flex-1 bg-slate-300/60" />
                                 <span className="text-[8px] font-bold uppercase tracking-[0.16em] text-slate-400">{secondaryPnms.length} not matching filter</span>
@@ -3139,7 +3045,6 @@ export default function Dashboard() {
                               onUnmatch={handleUnmatch}
                               onClearBoth={handleClearBoth}
                               onDelete={handleDeletePnm}
-                              onToggleLock={handleToggleLock}
                               onHoverStart={() => setHoveredPnmId(pnm.id)}
                               onHoverEnd={() => setHoveredPnmId(current => current === pnm.id ? null : current)}
                               isHighlighted={isHighlighted}
@@ -3148,8 +3053,6 @@ export default function Dashboard() {
                               dropPreview2={dropWarnings.get(`${pnm.id}-2`)}
                               highlightedActiveIds={highlightedActiveIds}
                               isBump2Enabled={isBump2Enabled}
-                              isSelected={selectedPnmIds.has(pnm.id)}
-                              onSelect={(id, checked) => setSelectedPnmIds(prev => { const next = new Set(prev); checked ? next.add(id) : next.delete(id); return next; })}
                               assignMode={assignMode}
                               isSelectedForAssign={selectedPnmForAssign === pnm.id}
                               onSelectForAssign={id => setSelectedPnmForAssign(prev => prev === id ? null : id)}
@@ -3159,7 +3062,7 @@ export default function Dashboard() {
                       </SortableContext>
                     ) : (
                       <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={7} className="py-12">
+                        <TableCell colSpan={6} className="py-12">
                           <div className="mx-auto flex max-w-md flex-col items-center justify-center gap-3 border border-dashed border-slate-200 bg-slate-50/70 px-6 py-8 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
                             <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">{searchTerm ? 'No results' : 'No PNMs yet'}</div>
                             <div className="space-y-1">

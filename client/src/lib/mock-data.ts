@@ -5,8 +5,6 @@ export interface PNM {
   status: 'unmatched' | 'matched';
   matchedWith?: string; // activeId 1
   secondMatch?: string; // activeId 2
-  lockedM1?: boolean;   // auto-fill won't overwrite M1
-  lockedM2?: boolean;   // auto-fill won't overwrite M2
 }
 
 export interface Active {

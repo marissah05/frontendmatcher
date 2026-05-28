@@ -35,9 +35,19 @@ interface SortablePNMRowProps {
   };
   highlightedActiveIds: Set<string>;
   isBump2Enabled?: boolean;
+  isSelected?: boolean;
+  onSelect?: (id: string, checked: boolean) => void;
+  assignMode?: 'drag' | 'click';
+  isSelectedForAssign?: boolean;
+  onSelectForAssign?: (id: string) => void;
 }
 
-export default function SortablePNMRow({ pnm, pnms, actives, rowIndex, onUnmatch, onClearBoth, onDelete, onToggleLock, onHoverStart, onHoverEnd, isHighlighted, isDimmed, dropPreview1, dropPreview2, highlightedActiveIds, isBump2Enabled = true }: SortablePNMRowProps) {
+export default function SortablePNMRow({
+  pnm, pnms, actives, rowIndex, onUnmatch, onClearBoth, onDelete, onToggleLock,
+  onHoverStart, onHoverEnd, isHighlighted, isDimmed, dropPreview1, dropPreview2,
+  highlightedActiveIds, isBump2Enabled = true,
+  isSelected = false, onSelect, assignMode = 'drag', isSelectedForAssign = false, onSelectForAssign,
+}: SortablePNMRowProps) {
   const {
     attributes,
     listeners,
@@ -100,22 +110,35 @@ export default function SortablePNMRow({ pnm, pnms, actives, rowIndex, onUnmatch
       style={style}
       onMouseEnter={onHoverStart}
       onMouseLeave={onHoverEnd}
+      onClick={assignMode === 'click' ? () => onSelectForAssign?.(pnm.id) : undefined}
       data-testid={`row-pnm-${pnm.id}`}
       className={cn(
         "h-10 border-b border-b-slate-100/90 transition-all relative group",
         rowIndex % 2 === 1 ? "bg-violet-50/45" : "bg-white/80",
-        !isDragging && !isHighlighted && "hover:bg-slate-100/85",
+        !isDragging && !isHighlighted && !isSelectedForAssign && "hover:bg-slate-100/85",
         isDragging && "z-50 bg-white shadow-[0_18px_36px_-26px_rgba(15,23,42,0.45)] opacity-85",
-        isHighlighted && "bg-slate-100/90 shadow-[inset_3px_0_0_0_rgb(15_23_42)]",
-        isDimmed && !isDragging && "opacity-45"
+        isHighlighted && !isSelectedForAssign && "bg-slate-100/90 shadow-[inset_3px_0_0_0_rgb(15_23_42)]",
+        isDimmed && !isDragging && "opacity-45",
+        isSelectedForAssign && "ring-2 ring-inset ring-violet-500 bg-violet-50/90 shadow-[inset_3px_0_0_0_rgb(124_58_237)]",
+        assignMode === 'click' && !isSelectedForAssign && "cursor-pointer",
       )}
     >
+      <TableCell className="py-0.5 w-6 pl-2 pr-0" onClick={e => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          className="h-3.5 w-3.5 cursor-pointer accent-violet-600"
+          checked={isSelected}
+          onChange={e => onSelect?.(pnm.id, e.target.checked)}
+          data-testid={`checkbox-select-pnm-${pnm.id}`}
+        />
+      </TableCell>
       <TableCell className="py-0.5 w-8 p-0">
         <div
           {...attributes}
           {...listeners}
           className="cursor-grab active:cursor-grabbing p-2 text-slate-300 hover:text-slate-600 transition-colors"
           data-testid={`button-drag-pnm-${pnm.id}`}
+          onClick={e => e.stopPropagation()}
         >
           <GripVertical className="h-3 w-3" />
         </div>
@@ -129,7 +152,7 @@ export default function SortablePNMRow({ pnm, pnms, actives, rowIndex, onUnmatch
           <span className="text-[9px] text-muted-foreground" data-testid={`text-pnm-id-${pnm.id}`}>ID: {pnm.idNumber}</span>
         </div>
       </TableCell>
-      <TableCell className="py-0.5">
+      <TableCell className="py-0.5" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-0.5">
           <PNMDropZone
             pnm={pnm}
@@ -145,7 +168,7 @@ export default function SortablePNMRow({ pnm, pnms, actives, rowIndex, onUnmatch
         </div>
       </TableCell>
       {isBump2Enabled ? (
-        <TableCell className="py-0.5">
+        <TableCell className="py-0.5" onClick={e => e.stopPropagation()}>
           <div className="flex items-center gap-0.5">
             <PNMDropZone
               pnm={pnm}
@@ -163,7 +186,7 @@ export default function SortablePNMRow({ pnm, pnms, actives, rowIndex, onUnmatch
       ) : (
         <TableCell className="py-0.5 text-slate-200 text-[10px] text-center select-none">—</TableCell>
       )}
-      <TableCell className="py-0.5 w-20">
+      <TableCell className="py-0.5 w-20" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-0.5">
           {(pnm.matchedWith || pnm.secondMatch) && (
             <Button

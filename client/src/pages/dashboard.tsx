@@ -41,7 +41,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Search, ClipboardPaste, UserCheck, Users, Trash2, Download, Upload, GitMerge, ListOrdered, AlertTriangle, Wand2, Settings2, ChevronLeft, ChevronRight, RotateCcw, Save, BookMarked, Clock, BarChart2, Star, MessageSquare, ChevronDown } from "lucide-react";
+import { Search, ClipboardPaste, UserCheck, Users, Trash2, Download, Upload, GitMerge, ListOrdered, AlertTriangle, Wand2, Settings2, ChevronLeft, ChevronRight, RotateCcw, Save, BookMarked, Clock, BarChart2, Star, MessageSquare, ChevronDown, MousePointer, GripVertical as GripVerticalIcon } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
@@ -839,6 +839,10 @@ export default function Dashboard() {
   const [undoStack, setUndoStack] = useState<PlannerSnapshot[]>([]);
   const [specialView, setSpecialView] = useState<null | "master" | "rank">(null);
   const [commentActiveOverrides, setCommentActiveOverrides] = useState<Record<string, string[]>>({});
+  const [statusFilters, setStatusFilters] = useState<Set<string>>(new Set());
+  const [selectedPnmIds, setSelectedPnmIds] = useState<Set<string>>(new Set());
+  const [assignMode, setAssignMode] = useState<'drag' | 'click'>('drag');
+  const [selectedPnmForAssign, setSelectedPnmForAssign] = useState<string | null>(null);
 
   const rounds = useMemo(() => days.find(d => d.id === activeDayId)?.rounds ?? [], [days, activeDayId]);
 
@@ -1782,6 +1786,62 @@ export default function Dashboard() {
     });
   };
 
+  const handleToggleStatusFilter = (filter: string) => {
+    setStatusFilters(prev => {
+      const next = new Set(prev);
+      if (next.has(filter)) next.delete(filter); else next.add(filter);
+      return next;
+    });
+  };
+
+  const handleBulkLock = (action: 'lockM1' | 'lockM2' | 'lockBoth' | 'unlockM1' | 'unlockM2' | 'unlockBoth') => {
+    if (selectedPnmIds.size === 0) return;
+    pushUndoState();
+    setRounds(prev => prev.map(r => {
+      if (r.id !== activeRoundId) return r;
+      return {
+        ...r,
+        pnms: r.pnms.map(p => {
+          if (!selectedPnmIds.has(p.id)) return p;
+          const lock1 = action === 'lockM1' || action === 'lockBoth' ? true
+            : action === 'unlockM1' || action === 'unlockBoth' ? false
+            : p.lockedM1;
+          const lock2 = action === 'lockM2' || action === 'lockBoth' ? true
+            : action === 'unlockM2' || action === 'unlockBoth' ? false
+            : p.lockedM2;
+          return { ...p, lockedM1: lock1, lockedM2: lock2 };
+        }),
+      };
+    }));
+    const verb = action.startsWith('lock') ? 'Locked' : 'Unlocked';
+    const count = selectedPnmIds.size;
+    toast.success(`${verb} ${count} PNM${count !== 1 ? 's' : ''}`, { className: "rounded-none text-xs font-bold", duration: 2000 });
+    setSelectedPnmIds(new Set());
+  };
+
+  const handleClickAssign = (activeId: string, slot: 1 | 2) => {
+    if (!selectedPnmForAssign) return;
+    const realActiveId = activeId.replace(/-[12]$/, '');
+    const slotKey = slot === 1 ? 'matchedWith' : 'secondMatch';
+    const alreadyUsedInSlot = activeRound.pnms.some(p => p.id !== selectedPnmForAssign && p[slotKey] === realActiveId);
+    if (alreadyUsedInSlot) {
+      toast.error(`This active is already used as Bump ${slot} by another PNM.`, { className: "rounded-none text-xs font-bold", duration: 3000 });
+      return;
+    }
+    pushUndoState();
+    setRounds(prev => prev.map(r => {
+      if (r.id !== activeRoundId) return r;
+      return {
+        ...r,
+        pnms: r.pnms.map(p => {
+          if (p.id !== selectedPnmForAssign) return p;
+          return { ...p, status: 'matched', [slotKey]: realActiveId };
+        }),
+      };
+    }));
+    setSelectedPnmForAssign(null);
+  };
+
   const generateChains = () => chainAnalysis.chains.map(chain => ({
     starterName: chain.starterName,
     handoffDisplay: chain.handoffDisplay,
@@ -2226,7 +2286,27 @@ export default function Dashboard() {
       .sort((a, b) => b.count - a.count);
   }, [rounds, actives]);
 
-  const filteredPnms = activeRound.pnms.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.idNumber.includes(searchTerm));
+  const filteredPnms = useMemo(() =>
+    activeRound.pnms.filter(p =>
+      p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.idNumber.includes(searchTerm)
+    ),
+  [activeRound.pnms, searchTerm]);
+
+  const { primaryPnms, secondaryPnms } = useMemo(() => {
+    if (statusFilters.size === 0) return { primaryPnms: filteredPnms, secondaryPnms: [] as PNM[] };
+    const matchesFilter = (p: PNM) => Array.from(statusFilters).some(f => {
+      const isFull = isBump2Enabled ? (!!p.matchedWith && !!p.secondMatch) : !!p.matchedWith;
+      if (f === 'complete') return isFull;
+      if (f === 'incomplete') return !isFull;
+      if (f === 'locked') return !!(p.lockedM1 || p.lockedM2);
+      if (f === 'unlocked') return !(p.lockedM1 || p.lockedM2);
+      return false;
+    });
+    return {
+      primaryPnms: filteredPnms.filter(matchesFilter),
+      secondaryPnms: filteredPnms.filter(p => !matchesFilter(p)),
+    };
+  }, [filteredPnms, statusFilters, isBump2Enabled]);
 
   if (isLoading) {
     return (
@@ -2892,12 +2972,89 @@ export default function Dashboard() {
                   </Dialog>
                 </div>
                 <Badge variant="outline" className="text-[10px] h-6 px-2 rounded-none border-slate-200 bg-slate-50/90 text-slate-600">{activeRound.pnms.length} PNMs</Badge>
+                <button
+                  onClick={() => { setAssignMode(m => m === 'drag' ? 'click' : 'drag'); setSelectedPnmForAssign(null); }}
+                  data-testid="button-toggle-assign-mode"
+                  title={assignMode === 'drag' ? 'Switch to Click-to-Assign mode' : 'Switch back to Drag-and-Drop mode'}
+                  className={`h-8 px-2.5 border text-[10px] font-bold uppercase tracking-wider rounded-none transition-colors flex items-center gap-1.5 ${assignMode === 'click' ? 'bg-violet-100 border-violet-300 text-violet-700 hover:bg-violet-200' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700'}`}
+                >
+                  {assignMode === 'drag' ? <GripVerticalIcon className="w-3 h-3" /> : <MousePointer className="w-3 h-3" />}
+                  {assignMode === 'drag' ? 'Drag' : 'Click'}
+                </button>
               </div>
-              
+
+              {/* Filter bar */}
+              <div className="px-3 py-1.5 border-b border-slate-100 flex items-center gap-1.5 bg-slate-50/60 shrink-0 flex-wrap">
+                <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400 mr-0.5">Filter</span>
+                {(['incomplete', 'complete', 'locked', 'unlocked'] as const).map(filter => (
+                  <button
+                    key={filter}
+                    onClick={() => handleToggleStatusFilter(filter)}
+                    data-testid={`button-filter-${filter}`}
+                    className={`h-5 px-2 text-[9px] font-bold uppercase tracking-wider border transition-colors rounded-none ${
+                      statusFilters.has(filter)
+                        ? filter === 'complete' ? 'bg-green-100 border-green-300 text-green-700'
+                          : filter === 'incomplete' ? 'bg-red-100 border-red-300 text-red-700'
+                          : filter === 'locked' ? 'bg-amber-100 border-amber-300 text-amber-700'
+                          : 'bg-slate-200 border-slate-400 text-slate-700'
+                        : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600'
+                    }`}
+                  >
+                    {filter}
+                  </button>
+                ))}
+                {statusFilters.size > 0 && (
+                  <button
+                    onClick={() => setStatusFilters(new Set())}
+                    className="h-5 px-2 text-[9px] font-bold uppercase tracking-wider border border-slate-200 bg-white text-slate-400 hover:text-red-500 hover:border-red-200 rounded-none transition-colors"
+                    data-testid="button-clear-filters"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {/* Bulk lock bar */}
+              {selectedPnmIds.size > 0 && (
+                <div className="px-3 py-1.5 border-b border-amber-200 flex items-center gap-1.5 bg-amber-50/80 shrink-0 flex-wrap">
+                  <span className="text-[9px] font-bold text-amber-700 mr-0.5">{selectedPnmIds.size} selected</span>
+                  {(['lockM1', 'lockM2', 'lockBoth', 'unlockM1', 'unlockM2', 'unlockBoth'] as const).map(action => (
+                    <button
+                      key={action}
+                      onClick={() => handleBulkLock(action)}
+                      data-testid={`button-bulk-${action}`}
+                      className={`h-5 px-2 text-[9px] font-bold uppercase tracking-wider border transition-colors rounded-none ${
+                        action.startsWith('lock')
+                          ? 'border-amber-300 bg-amber-100 text-amber-700 hover:bg-amber-200'
+                          : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      {action === 'lockM1' ? 'Lock M1' : action === 'lockM2' ? 'Lock M2' : action === 'lockBoth' ? 'Lock Both' : action === 'unlockM1' ? 'Unlock M1' : action === 'unlockM2' ? 'Unlock M2' : 'Unlock Both'}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setSelectedPnmIds(new Set())}
+                    className="ml-auto h-5 px-2 text-[9px] font-bold text-slate-400 hover:text-red-500 border border-slate-200 bg-white rounded-none transition-colors"
+                    data-testid="button-clear-bulk-selection"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+
               <ScrollArea className="flex-1">
                 <Table className="rounded-none">
                   <TableHeader className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-md shadow-[inset_0_-1px_0_rgba(226,232,240,0.95)]">
                     <TableRow className="sticky top-0 z-20 border-b border-slate-200/90 bg-slate-50/95 hover:bg-slate-50/95">
+                      <TableHead className="w-6 py-1 h-8 bg-slate-50/95 pl-2 pr-0">
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 cursor-pointer accent-violet-600"
+                          checked={filteredPnms.length > 0 && filteredPnms.every(p => selectedPnmIds.has(p.id))}
+                          onChange={e => setSelectedPnmIds(e.target.checked ? new Set(filteredPnms.map(p => p.id)) : new Set())}
+                          data-testid="checkbox-select-all-pnms"
+                        />
+                      </TableHead>
                       <TableHead className="w-8 bg-slate-50/95"></TableHead>
                       <TableHead className="py-1 h-8 text-[10px] uppercase font-bold bg-slate-50/95">Status</TableHead>
                       <TableHead className="py-1 h-8 text-[10px] uppercase font-bold bg-slate-50/95">PNM Name & ID</TableHead>
@@ -2921,21 +3078,20 @@ export default function Dashboard() {
                   <TableBody>
                     {filteredPnms.length > 0 ? (
                       <SortableContext 
-                        items={filteredPnms.map(p => p.id)} 
+                        items={[...primaryPnms, ...secondaryPnms].map(p => p.id)} 
                         strategy={verticalListSortingStrategy}
                       >
-                        {filteredPnms.map((pnm, index) => {
+                        {primaryPnms.map((pnm, index) => {
                           const isHighlighted = Boolean(
                             (pnm.matchedWith && highlightedActiveIds.has(pnm.matchedWith)) ||
                             (pnm.secondMatch && highlightedActiveIds.has(pnm.secondMatch))
                           );
-
                           return (
-                            <SortablePNMRow 
-                              key={pnm.id} 
-                              pnm={pnm} 
+                            <SortablePNMRow
+                              key={pnm.id}
+                              pnm={pnm}
                               pnms={activeRound.pnms}
-                              actives={actives} 
+                              actives={actives}
                               rowIndex={index}
                               onUnmatch={handleUnmatch}
                               onClearBoth={handleClearBoth}
@@ -2949,13 +3105,61 @@ export default function Dashboard() {
                               dropPreview2={dropWarnings.get(`${pnm.id}-2`)}
                               highlightedActiveIds={highlightedActiveIds}
                               isBump2Enabled={isBump2Enabled}
+                              isSelected={selectedPnmIds.has(pnm.id)}
+                              onSelect={(id, checked) => setSelectedPnmIds(prev => { const next = new Set(prev); checked ? next.add(id) : next.delete(id); return next; })}
+                              assignMode={assignMode}
+                              isSelectedForAssign={selectedPnmForAssign === pnm.id}
+                              onSelectForAssign={id => setSelectedPnmForAssign(prev => prev === id ? null : id)}
+                            />
+                          );
+                        })}
+                        {statusFilters.size > 0 && secondaryPnms.length > 0 && (
+                          <TableRow className="hover:bg-transparent">
+                            <TableCell colSpan={7} className="py-1 bg-slate-100/80 border-y border-slate-200">
+                              <div className="flex items-center gap-2 px-1">
+                                <div className="h-px flex-1 bg-slate-300/60" />
+                                <span className="text-[8px] font-bold uppercase tracking-[0.16em] text-slate-400">{secondaryPnms.length} not matching filter</span>
+                                <div className="h-px flex-1 bg-slate-300/60" />
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        {secondaryPnms.map((pnm, index) => {
+                          const isHighlighted = Boolean(
+                            (pnm.matchedWith && highlightedActiveIds.has(pnm.matchedWith)) ||
+                            (pnm.secondMatch && highlightedActiveIds.has(pnm.secondMatch))
+                          );
+                          return (
+                            <SortablePNMRow
+                              key={pnm.id}
+                              pnm={pnm}
+                              pnms={activeRound.pnms}
+                              actives={actives}
+                              rowIndex={primaryPnms.length + index}
+                              onUnmatch={handleUnmatch}
+                              onClearBoth={handleClearBoth}
+                              onDelete={handleDeletePnm}
+                              onToggleLock={handleToggleLock}
+                              onHoverStart={() => setHoveredPnmId(pnm.id)}
+                              onHoverEnd={() => setHoveredPnmId(current => current === pnm.id ? null : current)}
+                              isHighlighted={isHighlighted}
+                              isDimmed={hasLinkedHighlight && !isHighlighted}
+                              dropPreview1={dropWarnings.get(`${pnm.id}-1`)}
+                              dropPreview2={dropWarnings.get(`${pnm.id}-2`)}
+                              highlightedActiveIds={highlightedActiveIds}
+                              isBump2Enabled={isBump2Enabled}
+                              isSelected={selectedPnmIds.has(pnm.id)}
+                              onSelect={(id, checked) => setSelectedPnmIds(prev => { const next = new Set(prev); checked ? next.add(id) : next.delete(id); return next; })}
+                              assignMode={assignMode}
+                              isSelectedForAssign={selectedPnmForAssign === pnm.id}
+                              onSelectForAssign={id => setSelectedPnmForAssign(prev => prev === id ? null : id)}
                             />
                           );
                         })}
                       </SortableContext>
                     ) : (
                       <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={6} className="py-12">
+                        <TableCell colSpan={7} className="py-12">
                           <div className="mx-auto flex max-w-md flex-col items-center justify-center gap-3 border border-dashed border-slate-200 bg-slate-50/70 px-6 py-8 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
                             <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">{searchTerm ? 'No results' : 'No PNMs yet'}</div>
                             <div className="space-y-1">
@@ -3072,7 +3276,13 @@ export default function Dashboard() {
               <div className="flex items-center justify-between mb-3 px-0.5 shrink-0">
                 <div>
                   <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">Active Pool</h3>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Right-click an active to edit the pool.</p>
+                  {assignMode === 'click' && selectedPnmForAssign ? (
+                    <p className="text-[10px] text-violet-600 font-semibold mt-0.5">
+                      Click an active → assigns to {activeRound.pnms.find(p => p.id === selectedPnmForAssign)?.name}
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-slate-400 mt-0.5">{assignMode === 'click' ? 'Click a PNM row to select it.' : 'Right-click an active to edit the pool.'}</p>
+                  )}
                 </div>
                 <div className="flex gap-2 items-center">
                   <button
@@ -3116,6 +3326,9 @@ export default function Dashboard() {
                               event.preventDefault();
                               handleDeleteActive(active.id);
                             }}
+                            assignMode={assignMode}
+                            hasSelectedPnm={!!selectedPnmForAssign}
+                            onClickAssign={() => handleClickAssign(`${active.id}-1`, 1)}
                           />
                         );
                       })}
@@ -3153,6 +3366,9 @@ export default function Dashboard() {
                                   event.preventDefault();
                                   handleDeleteActive(active.id);
                                 }}
+                                assignMode={assignMode}
+                                hasSelectedPnm={!!selectedPnmForAssign}
+                                onClickAssign={() => handleClickAssign(`${active.id}-2`, 2)}
                               />
                             );
                           })}

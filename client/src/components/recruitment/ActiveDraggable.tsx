@@ -35,13 +35,13 @@ export default function ActiveDraggable({
 
   return (
     <div
-      ref={setNodeRef}
-      style={style}
+      ref={isClickMode ? undefined : setNodeRef}
+      style={isClickMode ? undefined : style}
       {...(isClickMode ? {} : listeners)}
       {...(isClickMode ? {} : attributes)}
       onMouseEnter={onHoverStart}
       onMouseLeave={onHoverEnd}
-      onContextMenu={onRightClick}
+      onContextMenu={isClickMode ? undefined : onRightClick}
       onClick={isClickMode ? onClickAssign : undefined}
       data-testid={`button-active-${active.id}`}
       className={cn(
